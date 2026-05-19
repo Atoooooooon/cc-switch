@@ -218,7 +218,7 @@ fn append_chat_message_as_anthropic(
             for tool_call in tool_calls {
                 blocks.push(json!({
                     "type": "tool_use",
-                    "id": tool_call.get("id").and_then(Value::as_str).unwrap_or_else(|| "toolu_"),
+                    "id": tool_call.get("id").and_then(Value::as_str).unwrap_or("toolu_"),
                     "name": tool_call.pointer("/function/name").and_then(Value::as_str).unwrap_or(""),
                     "input": parse_tool_arguments(tool_call.pointer("/function/arguments"))
                 }));
@@ -589,7 +589,7 @@ pub fn anthropic_sse_to_chat<E: std::error::Error + Send + 'static>(
             let bytes = match chunk {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    yield Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+                    yield Err(std::io::Error::other(e.to_string()));
                     continue;
                 }
             };
@@ -626,8 +626,9 @@ pub fn anthropic_sse_to_chat<E: std::error::Error + Send + 'static>(
                         let chunk = chat_chunk(&id, &model, json!({"role":"assistant","content":""}), None, None);
                         yield Ok(chat_sse_data(&chunk));
                     }
-                    "content_block_start" => {
-                        if value.pointer("/content_block/type").and_then(Value::as_str) == Some("tool_use") {
+                    "content_block_start"
+                        if value.pointer("/content_block/type").and_then(Value::as_str) == Some("tool_use") =>
+                    {
                             tool_index += 1;
                             let chunk = chat_chunk(&id, &model, json!({
                                 "tool_calls": [{
@@ -641,7 +642,6 @@ pub fn anthropic_sse_to_chat<E: std::error::Error + Send + 'static>(
                                 }]
                             }), None, None);
                             yield Ok(chat_sse_data(&chunk));
-                        }
                     }
                     "content_block_delta" => {
                         match value.pointer("/delta/type").and_then(Value::as_str).unwrap_or("") {
@@ -708,7 +708,7 @@ pub fn responses_sse_to_chat<E: std::error::Error + Send + 'static>(
             let bytes = match chunk {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    yield Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+                    yield Err(std::io::Error::other(e.to_string()));
                     continue;
                 }
             };
@@ -843,7 +843,7 @@ pub fn chat_sse_to_responses<E: std::error::Error + Send + 'static>(
             let bytes = match chunk {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    yield Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+                    yield Err(std::io::Error::other(e.to_string()));
                     continue;
                 }
             };

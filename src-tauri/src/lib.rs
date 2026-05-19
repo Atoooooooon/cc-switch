@@ -1467,7 +1467,7 @@ pub fn run() {
                         if url_str.starts_with("bistrocode://")
                             || url_str.starts_with("ccswitch://")
                         {
-                            if handle_deeplink_url(&app_handle, &url_str, true, "RunEvent::Opened")
+                            if handle_deeplink_url(app_handle, &url_str, true, "RunEvent::Opened")
                             {
                                 return;
                             }

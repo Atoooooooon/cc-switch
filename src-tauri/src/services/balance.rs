@@ -138,7 +138,7 @@ fn new_api_usage_from_value(body: &serde_json::Value) -> UsageResult {
         return make_error(message.to_string());
     }
 
-    let data = body.get("data").unwrap_or(&body);
+    let data = body.get("data").unwrap_or(body);
     let unlimited = data
         .get("unlimited_quota")
         .and_then(|v| v.as_bool())
