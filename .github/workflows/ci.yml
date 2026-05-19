@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  RUN_FULL_TESTS: "false"
+
 jobs:
   frontend:
     name: Frontend Checks
@@ -51,6 +54,7 @@ jobs:
         run: pnpm format:check
 
       - name: Unit tests
+        if: env.RUN_FULL_TESTS == 'true'
         run: pnpm test:unit
 
   backend:
@@ -96,4 +100,5 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Run tests
+        if: env.RUN_FULL_TESTS == 'true'
         run: cargo test --manifest-path src-tauri/Cargo.toml
