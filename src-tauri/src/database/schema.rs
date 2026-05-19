@@ -122,7 +122,7 @@ impl Database {
 
         // 8. Proxy Config 表（三行结构，app_type 主键）
         conn.execute("CREATE TABLE IF NOT EXISTS proxy_config (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','cursor','codex','gemini')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -148,6 +148,15 @@ impl Database {
                 circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
                 circuit_error_rate_threshold, circuit_min_requests)
                 VALUES ('claude', 6, 90, 180, 600, 8, 3, 90, 0.7, 15)",
+                [],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute(
+                "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests)
+                VALUES ('cursor', 6, 90, 180, 600, 8, 3, 90, 0.7, 15)",
                 [],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -430,6 +439,11 @@ impl Database {
                         log::info!("迁移数据库从 v9 到 v10（添加 Hermes Agent 支持）");
                         Self::migrate_v9_to_v10(conn)?;
                         Self::set_user_version(conn, 10)?;
+                    }
+                    10 => {
+                        log::info!("迁移数据库从 v10 到 v11（添加 Cursor 独立代理配置）");
+                        Self::migrate_v10_to_v11(conn)?;
+                        Self::set_user_version(conn, 11)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -718,6 +732,19 @@ impl Database {
                 15,
             ),
             (
+                "cursor",
+                false,
+                false,
+                6,
+                45,
+                90,
+                8,
+                3,
+                90,
+                0.6,
+                15,
+            ),
+            (
                 "codex",
                 get_bool("proxy_takeover_codex"),
                 get_bool("auto_failover_enabled_codex"),
@@ -748,7 +775,7 @@ impl Database {
         // 创建新表
         conn.execute("DROP TABLE IF EXISTS proxy_config_new", [])?;
         conn.execute("CREATE TABLE proxy_config_new (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','cursor','codex','gemini')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -1197,6 +1224,219 @@ impl Database {
         }
 
         log::info!("v9 -> v10 迁移完成：已添加 Hermes Agent 支持");
+        Ok(())
+    }
+
+    /// v10 -> v11 迁移：添加 Cursor 独立代理配置
+    fn migrate_v10_to_v11(conn: &Connection) -> Result<(), AppError> {
+        Self::rebuild_proxy_config_with_cursor(conn)?;
+        log::info!("v10 -> v11 迁移完成：已添加 Cursor 独立代理配置");
+        Ok(())
+    }
+
+    /// 补齐 proxy_config 行级字段，避免 v11 重建时 SELECT 引用不存在的列
+    fn ensure_proxy_config_row_columns(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_config")? {
+            return Ok(());
+        }
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "proxy_enabled",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "listen_address",
+            "TEXT NOT NULL DEFAULT '127.0.0.1'",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "listen_port",
+            "INTEGER NOT NULL DEFAULT 15721",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "enable_logging",
+            "INTEGER NOT NULL DEFAULT 1",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "enabled",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "auto_failover_enabled",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "max_retries",
+            "INTEGER NOT NULL DEFAULT 3",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "streaming_first_byte_timeout",
+            "INTEGER NOT NULL DEFAULT 60",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "streaming_idle_timeout",
+            "INTEGER NOT NULL DEFAULT 120",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "non_streaming_timeout",
+            "INTEGER NOT NULL DEFAULT 600",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "circuit_failure_threshold",
+            "INTEGER NOT NULL DEFAULT 4",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "circuit_success_threshold",
+            "INTEGER NOT NULL DEFAULT 2",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "circuit_timeout_seconds",
+            "INTEGER NOT NULL DEFAULT 60",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "circuit_error_rate_threshold",
+            "REAL NOT NULL DEFAULT 0.6",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "circuit_min_requests",
+            "INTEGER NOT NULL DEFAULT 10",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "default_cost_multiplier",
+            "TEXT NOT NULL DEFAULT '1'",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "pricing_model_source",
+            "TEXT NOT NULL DEFAULT 'response'",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "created_at",
+            "TEXT NOT NULL DEFAULT (datetime('now'))",
+        )?;
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "updated_at",
+            "TEXT NOT NULL DEFAULT (datetime('now'))",
+        )?;
+        Ok(())
+    }
+
+    fn rebuild_proxy_config_with_cursor(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_config")? {
+            return Ok(());
+        }
+
+        if !Self::has_column(conn, "proxy_config", "app_type")? {
+            Self::migrate_proxy_config_to_per_app(conn)?;
+            return Ok(());
+        }
+
+        Self::ensure_proxy_config_row_columns(conn)?;
+
+        let quoted_columns = [
+            "app_type",
+            "proxy_enabled",
+            "listen_address",
+            "listen_port",
+            "enable_logging",
+            "enabled",
+            "auto_failover_enabled",
+            "max_retries",
+            "streaming_first_byte_timeout",
+            "streaming_idle_timeout",
+            "non_streaming_timeout",
+            "circuit_failure_threshold",
+            "circuit_success_threshold",
+            "circuit_timeout_seconds",
+            "circuit_error_rate_threshold",
+            "circuit_min_requests",
+            "default_cost_multiplier",
+            "pricing_model_source",
+            "created_at",
+            "updated_at",
+        ]
+        .join(", ");
+
+        conn.execute("DROP TABLE IF EXISTS proxy_config_v11", [])?;
+        conn.execute("CREATE TABLE proxy_config_v11 (
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','cursor','codex','gemini')),
+            proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+            listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
+            enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3, streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+            streaming_idle_timeout INTEGER NOT NULL DEFAULT 120, non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+            circuit_failure_threshold INTEGER NOT NULL DEFAULT 4, circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+            circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60, circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+            circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+            default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+            pricing_model_source TEXT NOT NULL DEFAULT 'response',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )", [])?;
+
+        let copy_sql = format!(
+            "INSERT OR IGNORE INTO proxy_config_v11 ({quoted_columns}) SELECT {quoted_columns} FROM proxy_config WHERE app_type IN ('claude','codex','gemini')"
+        );
+        conn.execute(&copy_sql, [])?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config_v11 (app_type, proxy_enabled, listen_address, listen_port, enable_logging,
+                enabled, auto_failover_enabled, max_retries, streaming_first_byte_timeout, streaming_idle_timeout,
+                non_streaming_timeout, circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests, default_cost_multiplier, pricing_model_source)
+             SELECT 'cursor', proxy_enabled, listen_address, listen_port, enable_logging,
+                0, 0, 6, streaming_first_byte_timeout, streaming_idle_timeout,
+                non_streaming_timeout, 8, 3, 90, 0.7, 15, default_cost_multiplier, pricing_model_source
+             FROM proxy_config WHERE app_type = 'claude'
+             LIMIT 1",
+            [],
+        )?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config_v11 (app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests)
+             VALUES ('cursor', 6, 90, 180, 600, 8, 3, 90, 0.7, 15)",
+            [],
+        )?;
+
+        conn.execute("DROP TABLE proxy_config", [])?;
+        conn.execute("ALTER TABLE proxy_config_v11 RENAME TO proxy_config", [])?;
         Ok(())
     }
 

@@ -172,7 +172,7 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
 
     for app in apps_str.split(',') {
         match app.trim() {
-            "claude" => apps.claude = true,
+            "claude" | "cursor" => apps.claude = true,
             "codex" => apps.codex = true,
             "gemini" => apps.gemini = true,
             "opencode" => apps.opencode = true,

@@ -489,7 +489,7 @@ pub async fn handle_cursor_models(
 ) -> Result<Json<Value>, ProxyError> {
     let provider = state
         .provider_router
-        .select_providers("claude")
+        .select_providers("cursor")
         .await
         .ok()
         .and_then(|providers| providers.into_iter().next());
@@ -564,9 +564,9 @@ async fn handle_cursor_request(
         &state,
         &anthropic_body,
         &headers,
-        AppType::Claude,
+        AppType::Cursor,
         "Cursor",
-        "claude",
+        "cursor",
     )
     .await?;
 
@@ -578,7 +578,7 @@ async fn handle_cursor_request(
     let forwarder = ctx.create_forwarder(&state);
     let mut result = match forwarder
         .forward_with_retry(
-            &AppType::Claude,
+            &AppType::Cursor,
             method,
             "/v1/messages",
             anthropic_body,

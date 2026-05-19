@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Activity,
+  Copy,
   Clock,
   TrendingUp,
   Server,
@@ -66,9 +67,10 @@ export function ProxyPanel({
     }
   }, [globalConfig]);
 
-  // 获取所有三个应用类型的故障转移队列
+  // 获取各应用类型的故障转移队列
   // 启用自动故障转移后，将按队列优先级（P1→P2→...）选择供应商
   const { data: claudeQueue = [] } = useFailoverQueue("claude");
+  const { data: cursorQueue = [] } = useFailoverQueue("cursor");
   const { data: codexQueue = [] } = useFailoverQueue("codex");
   const { data: geminiQueue = [] } = useFailoverQueue("gemini");
 
@@ -211,6 +213,21 @@ export function ProxyPanel({
     return `http://${host}:${port}`;
   };
 
+  const baseProxyUrl = status
+    ? formatAddressForUrl(status.address, status.port)
+    : formatAddressForUrl(listenAddress, parseInt(listenPort, 10) || 15721);
+  const cursorBaseUrl = `${baseProxyUrl}/cursor`;
+  const copyText = (value: string, label: string) => {
+    navigator.clipboard.writeText(value);
+    toast.success(
+      t("proxy.panel.copied", {
+        item: label,
+        defaultValue: `${label}已复制`,
+      }),
+      { closeButton: true },
+    );
+  };
+
   return (
     <>
       <section className="space-y-4">
@@ -265,19 +282,20 @@ export function ProxyPanel({
                     defaultValue: "应用接管",
                   })}
                 </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {(["claude", "codex", "gemini"] as const).map((appType) => {
-                    const isEnabled =
-                      takeoverStatus?.[
-                        appType as keyof typeof takeoverStatus
-                      ] ?? false;
+                <div className="grid gap-2 sm:grid-cols-4">
+                  {(["claude", "cursor", "codex", "gemini"] as const).map(
+                    (appType) => {
+                      const isEnabled =
+                        takeoverStatus?.[
+                          appType as keyof typeof takeoverStatus
+                        ] ?? false;
                     return (
                       <div
                         key={appType}
                         className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
                       >
                         <span className="text-sm font-medium capitalize">
-                          {appType}
+                          {appType === "cursor" ? "Cursor" : appType}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -288,7 +306,8 @@ export function ProxyPanel({
                         />
                       </div>
                     );
-                  })}
+                    },
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {t("proxy.takeover.hint", {
@@ -320,14 +339,9 @@ export function ProxyPanel({
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      navigator.clipboard.writeText(
+                      copyText(
                         formatAddressForUrl(status.address, status.port),
-                      );
-                      toast.success(
-                        t("proxy.panel.addressCopied", {
-                          defaultValue: "地址已复制",
-                        }),
-                        { closeButton: true },
+                        "服务地址",
                       );
                     }}
                   >
@@ -337,6 +351,33 @@ export function ProxyPanel({
                 <p className="text-xs text-muted-foreground mt-2">
                   {t("proxy.settings.restartRequired", {
                     defaultValue: "修改监听地址/端口需要先停止代理服务",
+                  })}
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-border space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {t("proxy.cursor.title", {
+                    defaultValue: "Cursor 代理配置",
+                  })}
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <code className="flex-1 text-sm bg-background px-3 py-2 rounded border border-border/60">
+                    {cursorBaseUrl}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copyText(cursorBaseUrl, "Cursor Base URL")}
+                  >
+                    <Copy className="mr-2 h-3.5 w-3.5" />
+                    {t("common.copy")}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("proxy.cursor.hint", {
+                    defaultValue:
+                      "Cursor 里打开模型供应商的 OpenAI 兼容配置，把 Base URL / Override OpenAI Base URL 填为上面的地址；API Key 填任意非空值即可，实际认证由本地代理使用当前 Cursor 配置注入。",
                   })}
                 </p>
               </div>
@@ -407,6 +448,7 @@ export function ProxyPanel({
 
               {/* [6] Provider queues */}
               {(claudeQueue.length > 0 ||
+                cursorQueue.length > 0 ||
                 codexQueue.length > 0 ||
                 geminiQueue.length > 0) && (
                 <div className="pt-3 border-t border-border space-y-3">
@@ -422,6 +464,18 @@ export function ProxyPanel({
                       appType="claude"
                       appLabel="Claude"
                       targets={claudeQueue.map((item) => ({
+                        id: item.providerId,
+                        name: item.providerName,
+                      }))}
+                      status={status}
+                    />
+                  )}
+
+                  {cursorQueue.length > 0 && (
+                    <ProviderQueueGroup
+                      appType="cursor"
+                      appLabel="Cursor"
+                      targets={cursorQueue.map((item) => ({
                         id: item.providerId,
                         name: item.providerName,
                       }))}
@@ -577,6 +631,33 @@ export function ProxyPanel({
                   )}
                 </Button>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {t("proxy.cursor.title", {
+                  defaultValue: "Cursor 代理配置",
+                })}
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="flex-1 text-sm bg-background px-3 py-2 rounded border border-border/60">
+                  {cursorBaseUrl}
+                </code>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyText(cursorBaseUrl, "Cursor Base URL")}
+                >
+                  <Copy className="mr-2 h-3.5 w-3.5" />
+                  {t("common.copy")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("proxy.cursor.stoppedHint", {
+                  defaultValue:
+                    "启动代理服务后，在 Cursor 的 OpenAI 兼容配置中使用这个 Base URL；API Key 填任意非空值即可。",
+                })}
+              </p>
             </div>
 
             {/* Stopped hint */}

@@ -183,7 +183,7 @@ export function AddProviderDialog({
         };
 
         if (values.presetId) {
-          if (appId === "claude") {
+          if (appId === "claude" || appId === "cursor") {
             const presets = providerPresets;
             const presetIndex = parseInt(
               values.presetId.replace("claude-", ""),
@@ -252,7 +252,7 @@ export function AddProviderDialog({
           }
         }
 
-        if (appId === "claude") {
+        if (appId === "claude" || appId === "cursor") {
           const env = parsedConfig.env as Record<string, any> | undefined;
           if (env?.ANTHROPIC_BASE_URL) {
             addUrl(env.ANTHROPIC_BASE_URL);

@@ -172,7 +172,7 @@ function App() {
   const queryClient = useQueryClient();
 
   const [activeApp, setActiveApp] = useState<AppId>(getInitialApp);
-  const providerApp: AppId = activeApp === "cursor" ? "claude" : activeApp;
+  const providerApp: AppId = activeApp;
   const sharedFeatureApp: AppId =
     activeApp === "claude-desktop" || activeApp === "cursor"
       ? "claude"
@@ -267,9 +267,7 @@ function App() {
     status: proxyStatus,
   } = useProxyStatus();
   const isCurrentAppTakeoverActive =
-    activeApp === "cursor"
-      ? isProxyRunning
-      : takeoverStatus?.[activeApp] || false;
+    takeoverStatus?.[activeApp as keyof typeof takeoverStatus] ?? false;
   const isProviderAppTakeoverActive = takeoverStatus?.[providerApp] || false;
   const activeProviderId = useMemo(() => {
     const target = proxyStatus?.active_targets?.find(
@@ -1332,8 +1330,7 @@ function App() {
             {currentView === "providers" &&
               activeApp !== "opencode" &&
               activeApp !== "openclaw" &&
-              activeApp !== "hermes" &&
-              activeApp !== "cursor" && (
+              activeApp !== "hermes" && (
                 <div
                   className="flex shrink-0 items-center gap-1.5"
                   style={{ WebkitAppRegion: "no-drag" } as any}
@@ -1343,14 +1340,14 @@ function App() {
                   ) : (
                     settingsData?.enableLocalProxy && (
                       <ProxyToggle
-                        activeApp={activeApp as Exclude<AppId, "cursor">}
+                        activeApp={activeApp as Exclude<AppId, "claude-desktop">}
                       />
                     )
                   )}
                   {activeApp !== "claude-desktop" &&
                     settingsData?.enableFailoverToggle && (
                       <FailoverToggle
-                        activeApp={activeApp as Exclude<AppId, "cursor">}
+                        activeApp={activeApp as Exclude<AppId, "claude-desktop">}
                       />
                     )}
                 </div>

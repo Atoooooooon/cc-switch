@@ -20,6 +20,7 @@ import { ProviderIcon } from "@/components/ProviderIcon";
 import {
   BISTROCODE_BASE_URL,
   bistrocodeApi,
+  providersApi,
   settingsApi,
   universalProvidersApi,
 } from "@/lib/api";
@@ -44,6 +45,7 @@ const BISTROCODE_PROVIDER_IDS: Record<string, string> = {
 export const BISTROCODE_MANAGED_PROVIDER_IDS = new Set(
   Object.values(BISTROCODE_PROVIDER_IDS).flatMap((id) => [
     `universal-claude-${id}`,
+    `universal-cursor-${id}`,
     `universal-codex-${id}`,
     `universal-gemini-${id}`,
   ]),
@@ -153,6 +155,14 @@ function createManagedProvider(
 }
 
 function appProviderPrefix(appId: string) {
+  if (appId === "cursor") return "cursor";
+  if (appId === "codex") return "codex";
+  if (appId === "gemini") return "gemini";
+  return "claude";
+}
+
+function modelConfigKeyForApp(appId: string) {
+  if (appId === "cursor") return "claude";
   if (appId === "codex") return "codex";
   if (appId === "gemini") return "gemini";
   return "claude";
@@ -193,7 +203,8 @@ function providerFromTokenForApp(
   if (!token || !universal) return null;
 
   const childApp = appProviderPrefix(appId);
-  const model = universal.models[childApp as keyof UniversalProviderModels];
+  const modelKey = modelConfigKeyForApp(appId);
+  const model = universal.models[modelKey as keyof UniversalProviderModels];
   let settingsConfig: Provider["settingsConfig"];
 
   if (childApp === "codex") {
@@ -265,7 +276,7 @@ requires_openai_auth = true`,
     notes: universal.notes,
     meta: {
       ...universal.meta,
-      apiFormat: childApp === "claude" ? "openai_responses" : undefined,
+      apiFormat: modelKey === "claude" ? "openai_responses" : undefined,
     },
     icon: universal.icon,
     iconColor: universal.iconColor,
@@ -384,10 +395,15 @@ export function BistroCodePlatformPanel({
           await universalProvidersApi.upsert(provider);
           await universalProvidersApi.sync(provider.id);
         }
+        const cursorProvider = providerFromTokenForApp(tokens, "cursor");
+        if (cursorProvider) {
+          await providersApi.add(cursorProvider, "cursor", false);
+        }
         if (cancelled) return;
         setProviderSyncError(null);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["providers", "claude"] }),
+          queryClient.invalidateQueries({ queryKey: ["providers", "cursor"] }),
           queryClient.invalidateQueries({ queryKey: ["providers", "codex"] }),
           queryClient.invalidateQueries({ queryKey: ["providers", "gemini"] }),
         ]);
@@ -431,6 +447,32 @@ export function BistroCodePlatformPanel({
   const isManagedCurrent =
     Boolean(activeManagedProvider?.id) &&
     activeManagedProvider?.id === currentProviderId;
+
+  const ensureManagedProviderForSwitch = async (provider: Provider) => {
+    if (appId !== "cursor") return;
+    if (providers[provider.id]) return;
+
+    await providersApi.add(provider, appId, false);
+    await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
+  };
+
+  const handlePrimaryAction = async () => {
+    if (!isConnected) {
+      await startAuthorize();
+      return;
+    }
+
+    if (!activeManagedProvider || !onSwitch) return;
+
+    try {
+      await ensureManagedProviderForSwitch(activeManagedProvider);
+      await onSwitch(activeManagedProvider);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`切换 BistroCode 默认配置失败：${message}`);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated || accountQuery.isFetching) return;
     if (accountQuery.data?.loggedIn === false) {
@@ -516,16 +558,10 @@ export function BistroCodePlatformPanel({
         <div className="flex flex-wrap items-center gap-1.5">
           <Button
             size="sm"
-            onClick={() => {
-              if (!isConnected) {
-                void startAuthorize();
-                return;
-              }
-              if (activeManagedProvider && onSwitch) {
-                onSwitch(activeManagedProvider);
-              }
-            }}
-            disabled={isConnecting}
+            onClick={() => void handlePrimaryAction()}
+            disabled={
+              isConnecting || (isConnected && !activeManagedProvider)
+            }
           >
             {isConnecting ? (
               <Loader2 className="h-4 w-4 animate-spin" />

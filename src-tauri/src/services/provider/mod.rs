@@ -64,9 +64,18 @@ mod tests {
     use serial_test::serial;
     use std::env;
     use std::fs;
+    use std::net::TcpListener;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex, OnceLock};
     use tempfile::TempDir;
+
+    fn allocate_ephemeral_port() -> u16 {
+        TcpListener::bind("127.0.0.1:0")
+            .expect("bind ephemeral port")
+            .local_addr()
+            .expect("read ephemeral port")
+            .port()
+    }
 
     struct TempHome {
         #[allow(dead_code)]
@@ -381,8 +390,12 @@ base_url = "http://localhost:8080"
         crate::settings::set_current_provider(&AppType::Claude, Some("p1"))
             .expect("set local current provider");
 
+        let test_port = allocate_ephemeral_port();
+        let proxy_base_url = format!("http://127.0.0.1:{test_port}");
+
         db.update_proxy_config(ProxyConfig {
             live_takeover_active: true,
+            listen_port: test_port,
             ..Default::default()
         })
         .await
@@ -402,7 +415,7 @@ base_url = "http://localhost:8080"
             &get_claude_settings_path(),
             &json!({
                 "env": {
-                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721",
+                    "ANTHROPIC_BASE_URL": proxy_base_url,
                     "ANTHROPIC_API_KEY": "PROXY_MANAGED",
                     "ANTHROPIC_MODEL": "stale-model"
                 },
@@ -464,7 +477,7 @@ base_url = "http://localhost:8080"
             live.get("env")
                 .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
                 .and_then(|v| v.as_str()),
-            Some("http://127.0.0.1:15721"),
+            Some(proxy_base_url.as_str()),
             "proxy base URL should stay intact"
         );
         assert!(
@@ -473,6 +486,12 @@ base_url = "http://localhost:8080"
                 .is_none(),
             "model override should be removed in takeover live config"
         );
+
+        state
+            .proxy_service
+            .stop()
+            .await
+            .expect("stop proxy service");
     }
 
     #[test]
@@ -963,7 +982,7 @@ base_url = "http://localhost:8080"
 
 impl ProviderService {
     fn normalize_provider_if_claude(app_type: &AppType, provider: &mut Provider) {
-        if matches!(app_type, AppType::Claude) {
+        if matches!(app_type, AppType::Claude | AppType::Cursor) {
             let mut v = provider.settings_config.clone();
             if normalize_claude_models_in_value(&mut v) {
                 provider.settings_config = v;
@@ -1765,6 +1784,7 @@ impl ProviderService {
         match app_type {
             AppType::Claude => Self::extract_claude_common_config(&provider.settings_config),
             AppType::ClaudeDesktop => Ok(String::new()),
+            AppType::Cursor => Ok(String::new()),
             AppType::Codex => Self::extract_codex_common_config(&provider.settings_config),
             AppType::Gemini => Self::extract_gemini_common_config(&provider.settings_config),
             AppType::OpenCode => Self::extract_opencode_common_config(&provider.settings_config),
@@ -1781,6 +1801,7 @@ impl ProviderService {
         match app_type {
             AppType::Claude => Self::extract_claude_common_config(settings_config),
             AppType::ClaudeDesktop => Ok(String::new()),
+            AppType::Cursor => Ok(String::new()),
             AppType::Codex => Self::extract_codex_common_config(settings_config),
             AppType::Gemini => Self::extract_gemini_common_config(settings_config),
             AppType::OpenCode => Self::extract_opencode_common_config(settings_config),
@@ -2086,12 +2107,12 @@ impl ProviderService {
 
     fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
         match app_type {
-            AppType::Claude => {
+            AppType::Claude | AppType::Cursor => {
                 if !provider.settings_config.is_object() {
                     return Err(AppError::localized(
                         "provider.claude.settings.not_object",
-                        "Claude 配置必须是 JSON 对象",
-                        "Claude configuration must be a JSON object",
+                        "Claude/Cursor 配置必须是 JSON 对象",
+                        "Claude/Cursor configuration must be a JSON object",
                     ));
                 }
             }
@@ -2198,7 +2219,7 @@ impl ProviderService {
         app_type: &AppType,
     ) -> Result<(String, String), AppError> {
         match app_type {
-            AppType::Claude => {
+            AppType::Claude | AppType::Cursor => {
                 let env = provider
                     .settings_config
                     .get("env")

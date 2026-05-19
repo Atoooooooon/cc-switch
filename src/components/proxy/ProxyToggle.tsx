@@ -15,7 +15,7 @@ import type { ProxyTakeoverStatus } from "@/types/proxy";
 
 interface ProxyToggleProps {
   className?: string;
-  activeApp: Exclude<AppId, "cursor">;
+  activeApp: Exclude<AppId, "claude-desktop">;
 }
 
 export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
@@ -37,6 +37,8 @@ export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
   const appLabel =
     activeApp === "claude"
       ? "Claude"
+      : activeApp === "cursor"
+        ? "Cursor"
       : activeApp === "codex"
         ? "Codex"
         : activeApp === "gemini"

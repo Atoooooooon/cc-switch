@@ -70,6 +70,7 @@ impl VisibleApps {
         match app {
             AppType::Claude => self.claude,
             AppType::ClaudeDesktop => self.claude_desktop,
+            AppType::Cursor => self.cursor,
             AppType::Codex => self.codex,
             AppType::Gemini => self.gemini,
             AppType::OpenCode => self.opencode,
@@ -257,6 +258,9 @@ pub struct AppSettings {
     /// 当前 Claude Desktop 供应商 ID（本地存储，优先于数据库 is_current）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_provider_claude_desktop: Option<String>,
+    /// 当前 Cursor 供应商 ID（本地存储，优先于数据库 is_current）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_provider_cursor: Option<String>,
     /// 当前 Codex 供应商 ID（本地存储，优先于数据库 is_current）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_provider_codex: Option<String>,
@@ -342,6 +346,7 @@ impl Default for AppSettings {
             hermes_config_dir: None,
             current_provider_claude: None,
             current_provider_claude_desktop: None,
+            current_provider_cursor: None,
             current_provider_codex: None,
             current_provider_gemini: None,
             current_provider_opencode: None,
@@ -630,6 +635,7 @@ pub fn get_current_provider(app_type: &AppType) -> Option<String> {
     match app_type {
         AppType::Claude => settings.current_provider_claude.clone(),
         AppType::ClaudeDesktop => settings.current_provider_claude_desktop.clone(),
+        AppType::Cursor => settings.current_provider_cursor.clone(),
         AppType::Codex => settings.current_provider_codex.clone(),
         AppType::Gemini => settings.current_provider_gemini.clone(),
         AppType::OpenCode => settings.current_provider_opencode.clone(),
@@ -647,6 +653,7 @@ pub fn set_current_provider(app_type: &AppType, id: Option<&str>) -> Result<(), 
     mutate_settings(|settings| match app_type {
         AppType::Claude => settings.current_provider_claude = id_owned.clone(),
         AppType::ClaudeDesktop => settings.current_provider_claude_desktop = id_owned.clone(),
+        AppType::Cursor => settings.current_provider_cursor = id_owned.clone(),
         AppType::Codex => settings.current_provider_codex = id_owned.clone(),
         AppType::Gemini => settings.current_provider_gemini = id_owned.clone(),
         AppType::OpenCode => settings.current_provider_opencode = id_owned.clone(),

@@ -18,7 +18,7 @@ import type { ProxyTakeoverStatus } from "@/types/proxy";
 
 interface FailoverToggleProps {
   className?: string;
-  activeApp: Exclude<AppId, "cursor">;
+  activeApp: Exclude<AppId, "claude-desktop">;
 }
 
 export function FailoverToggle({ className, activeApp }: FailoverToggleProps) {
@@ -38,6 +38,8 @@ export function FailoverToggle({ className, activeApp }: FailoverToggleProps) {
   const appLabel =
     activeApp === "claude"
       ? "Claude"
+      : activeApp === "cursor"
+        ? "Cursor"
       : activeApp === "codex"
         ? "Codex"
         : "Gemini";

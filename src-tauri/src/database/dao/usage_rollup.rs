@@ -168,6 +168,16 @@ mod tests {
     use crate::error::AppError;
     use chrono::{Local, TimeZone};
 
+    /// 与 rollup SQL `date(created_at, 'unixepoch', 'localtime')` 保持一致
+    fn rollup_local_date_from_timestamp(ts: i64) -> String {
+        Local
+            .timestamp_opt(ts, 0)
+            .single()
+            .expect("valid timestamp")
+            .format("%Y-%m-%d")
+            .to_string()
+    }
+
     fn local_dt(
         year: i32,
         month: u32,
@@ -337,10 +347,7 @@ mod tests {
 
         {
             let conn = crate::database::lock_conn!(db.conn);
-            let date_str = chrono::DateTime::from_timestamp(old_ts, 0)
-                .unwrap()
-                .format("%Y-%m-%d")
-                .to_string();
+            let date_str = rollup_local_date_from_timestamp(old_ts);
             conn.execute(
                 "INSERT INTO usage_daily_rollups
                     (date, app_type, provider_id, model, request_count, success_count,

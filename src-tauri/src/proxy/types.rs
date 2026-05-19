@@ -94,7 +94,7 @@ pub struct ProxyStatus {
 /// 活跃的代理目标信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveTarget {
-    pub app_type: String, // "Claude" | "Codex" | "Gemini"
+    pub app_type: String, // "claude" | "cursor" | "codex" | "gemini"
     pub provider_name: String,
     pub provider_id: String,
 }
@@ -111,6 +111,7 @@ pub struct ProxyServerInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProxyTakeoverStatus {
     pub claude: bool,
+    pub cursor: bool,
     pub codex: bool,
     pub gemini: bool,
     pub opencode: bool,

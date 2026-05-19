@@ -358,6 +358,12 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
+        let cursor_enabled = self
+            .db
+            .get_proxy_config_for_app("cursor")
+            .await
+            .map(|c| c.enabled)
+            .unwrap_or(false);
         let codex_enabled = self
             .db
             .get_proxy_config_for_app("codex")
@@ -376,11 +382,37 @@ impl ProxyService {
 
         Ok(ProxyTakeoverStatus {
             claude: claude_enabled,
+            cursor: cursor_enabled,
             codex: codex_enabled,
             gemini: gemini_enabled,
             opencode: opencode_enabled,
             openclaw: openclaw_enabled,
         })
+    }
+
+    async fn emit_official_provider_warning_if_needed(
+        &self,
+        app: &AppType,
+        app_type_str: &str,
+    ) {
+        if let Ok(Some(current_id)) =
+            crate::settings::get_effective_current_provider(&self.db, app)
+        {
+            if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str)
+            {
+                if provider.category.as_deref() == Some("official") {
+                    if let Some(handle) = self.app_handle.read().await.as_ref() {
+                        let _ = handle.emit(
+                            "proxy-official-warning",
+                            serde_json::json!({
+                                "appType": app_type_str,
+                                "providerName": provider.name,
+                            }),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// 为指定应用开启/关闭 Live 接管
@@ -395,6 +427,23 @@ impl ProxyService {
             // 1) 代理服务未运行则自动启动
             if !self.is_running().await {
                 self.start().await?;
+            }
+
+            if matches!(app, AppType::Cursor) {
+                let mut updated_config = self
+                    .db
+                    .get_proxy_config_for_app(app_type_str)
+                    .await
+                    .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
+                updated_config.enabled = true;
+                self.db
+                    .update_proxy_config_for_app(updated_config)
+                    .await
+                    .map_err(|e| format!("设置 {app_type_str} enabled 状态失败: {e}"))?;
+                let _ = self.db.set_live_takeover_active(true).await;
+                self.emit_official_provider_warning_if_needed(&app, app_type_str)
+                    .await;
+                return Ok(());
             }
 
             // 2) 已接管则直接返回（幂等）；但如果缺少备份或占位符残留，需要重建接管
@@ -467,24 +516,8 @@ impl ProxyService {
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
             let _ = self.db.set_live_takeover_active(true).await;
 
-            // 8) Warn if the current provider is official (risk of account ban via proxy)
-            if let Ok(Some(current_id)) =
-                crate::settings::get_effective_current_provider(&self.db, &app)
-            {
-                if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str) {
-                    if provider.category.as_deref() == Some("official") {
-                        if let Some(handle) = self.app_handle.read().await.as_ref() {
-                            let _ = handle.emit(
-                                "proxy-official-warning",
-                                serde_json::json!({
-                                    "appType": app_type_str,
-                                    "providerName": provider.name,
-                                }),
-                            );
-                        }
-                    }
-                }
-            }
+            self.emit_official_provider_warning_if_needed(&app, app_type_str)
+                .await;
 
             return Ok(());
         }
@@ -498,6 +531,36 @@ impl ProxyService {
 
         if !current_config.enabled {
             return Ok(()); // 未接管，幂等返回
+        }
+
+        if matches!(app, AppType::Cursor) {
+            let mut updated_config = self
+                .db
+                .get_proxy_config_for_app(app_type_str)
+                .await
+                .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
+            updated_config.enabled = false;
+            self.db
+                .update_proxy_config_for_app(updated_config)
+                .await
+                .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
+            self.db
+                .clear_provider_health_for_app(app_type_str)
+                .await
+                .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
+
+            let any_enabled = self
+                .db
+                .is_live_takeover_active()
+                .await
+                .map_err(|e| format!("检查接管状态失败: {e}"))?;
+            if !any_enabled {
+                let _ = self.db.set_live_takeover_active(false).await;
+                if self.is_running().await {
+                    let _ = self.stop().await;
+                }
+            }
+            return Ok(());
         }
 
         // 1) 恢复 Live 配置
@@ -848,7 +911,7 @@ impl ProxyService {
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
-        for app_type in ["claude", "codex", "gemini"] {
+        for app_type in ["claude", "cursor", "codex", "gemini"] {
             if let Ok(mut config) = self.db.get_proxy_config_for_app(app_type).await {
                 if config.enabled {
                     config.enabled = false;
@@ -1221,6 +1284,10 @@ impl ProxyService {
         &self,
         app_type: &AppType,
     ) -> Result<(), String> {
+        if matches!(app_type, AppType::Cursor) {
+            return Ok(());
+        }
+
         let app_type_str = app_type.as_str();
 
         // 1) 优先从 Live 备份恢复（这是"原始 Live"的唯一可靠来源）
@@ -1271,6 +1338,7 @@ impl ProxyService {
             AppType::Claude => self.write_claude_live(config),
             AppType::Codex => self.write_codex_live(config),
             AppType::Gemini => self.write_gemini_live(config),
+            AppType::Cursor => Ok(()),
             _ => Err("该应用不支持代理功能".to_string()),
         }
     }
@@ -1430,7 +1498,7 @@ impl ProxyService {
     /// 检查是否处于 Live 接管模式
     pub async fn is_takeover_active(&self) -> Result<bool, String> {
         let status = self.get_takeover_status().await?;
-        Ok(status.claude || status.codex || status.gemini)
+        Ok(status.claude || status.cursor || status.codex || status.gemini)
     }
 
     /// 从异常退出中恢复（启动时调用）

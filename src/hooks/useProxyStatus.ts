@@ -128,6 +128,8 @@ export function useProxyStatus() {
       const appLabel =
         variables.appType === "claude"
           ? "Claude"
+          : variables.appType === "cursor"
+            ? "Cursor"
           : variables.appType === "codex"
             ? "Codex"
             : variables.appType === "gemini"
@@ -213,6 +215,7 @@ export function useProxyStatus() {
     takeoverStatus,
     isTakeoverActive:
       takeoverStatus?.claude ||
+      takeoverStatus?.cursor ||
       takeoverStatus?.codex ||
       takeoverStatus?.gemini ||
       false,
