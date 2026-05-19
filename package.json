@@ -1,7 +1,7 @@
 {
-  "name": "cc-switch",
+  "name": "bistrocode-switch",
   "version": "3.15.0",
-  "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
+  "description": "BistroCode desktop assistant for Claude Code, Codex, Gemini CLI and Cursor",
   "type": "module",
   "scripts": {
     "dev": "pnpm tauri dev",

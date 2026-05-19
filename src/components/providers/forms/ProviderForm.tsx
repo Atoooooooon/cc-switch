@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ import type {
 } from "@/types";
 import {
   providerPresets,
+  BISTROCODE_HIDDEN_PRESET_NAMES,
   type ProviderPreset,
 } from "@/config/claudeProviderPresets";
 import {
@@ -118,8 +119,25 @@ type PresetEntry = {
     | HermesProviderPreset;
 };
 
+const visiblePresetEntries = <T extends { name: string; hidden?: boolean }>(
+  appId: string,
+  presets: T[],
+  predicate?: (preset: T) => boolean,
+): PresetEntry[] =>
+  presets
+    .map((preset, index) => ({
+      id: `${appId}-${index}`,
+      preset,
+    }))
+    .filter((entry) => !entry.preset.hidden)
+    .filter((entry) => !predicate || predicate(entry.preset))
+    .filter(
+      (entry) => !BISTROCODE_HIDDEN_PRESET_NAMES.has(entry.preset.name),
+    ) as unknown as PresetEntry[];
+
 export interface ProviderFormProps {
   appId: AppId;
+  providerContext?: "default" | "cursor";
   providerId?: string;
   submitLabel: string;
   onSubmit: (values: ProviderFormValues) => Promise<void> | void;
@@ -150,6 +168,7 @@ export function ProviderForm(props: ProviderFormProps) {
 
 function ProviderFormFull({
   appId,
+  providerContext = "default",
   providerId,
   submitLabel,
   onSubmit,
@@ -183,15 +202,19 @@ function ProviderFormFull({
     }
   };
 
+  const defaultSelectedPresetId =
+    !initialData && providerContext === "cursor" ? "claude-0" : "custom";
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(
-    initialData ? null : "custom",
+    initialData ? null : defaultSelectedPresetId,
   );
+  const didApplyCursorDefaultPresetRef = useRef(false);
   const [activePreset, setActivePreset] = useState<{
     id: string;
     category?: ProviderCategory;
     isPartner?: boolean;
     partnerPromotionKey?: string;
     suggestedDefaults?: OpenClawSuggestedDefaults;
+    providerType?: string;
   } | null>(null);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState(false);
   const [isCodexEndpointModalOpen, setIsCodexEndpointModalOpen] =
@@ -240,7 +263,7 @@ function ProviderFormFull({
   const isAnyOmoCategory = isOmoCategory || isOmoSlimCategory;
 
   useEffect(() => {
-    setSelectedPresetId(initialData ? null : "custom");
+    setSelectedPresetId(initialData ? null : defaultSelectedPresetId);
     setActivePreset(null);
 
     if (!initialData) {
@@ -260,7 +283,7 @@ function ProviderFormFull({
         initialData?.meta?.pricingModelSource,
       ),
     });
-  }, [appId, initialData, supportsFullUrl]);
+  }, [appId, defaultSelectedPresetId, initialData, supportsFullUrl]);
 
   const defaultValues: ProviderFormData = useMemo(
     () => ({
@@ -468,39 +491,26 @@ function ProviderFormFull({
   );
 
   const presetEntries = useMemo(() => {
-    if (appId === "codex") {
-      return codexProviderPresets.map<PresetEntry>((preset, index) => ({
-        id: `codex-${index}`,
-        preset,
-      }));
-    } else if (appId === "gemini") {
-      return geminiProviderPresets.map<PresetEntry>((preset, index) => ({
-        id: `gemini-${index}`,
-        preset,
-      }));
-    } else if (appId === "opencode") {
-      return opencodeProviderPresets.map<PresetEntry>((preset, index) => ({
-        id: `opencode-${index}`,
-        preset,
-      }));
-    } else if (appId === "openclaw") {
-      return openclawProviderPresets.map<PresetEntry>((preset, index) => ({
-        id: `openclaw-${index}`,
-        preset,
-      }));
-    } else if (appId === "hermes") {
-      return hermesProviderPresets.map<PresetEntry>((preset, index) => ({
-        id: `hermes-${index}`,
-        preset,
-      }));
+    if (providerContext === "cursor") {
+      return visiblePresetEntries(
+        "claude",
+        providerPresets,
+        (preset) => preset.providerType === "bistrocode",
+      );
     }
-    return providerPresets
-      .filter((p) => !p.hidden)
-      .map<PresetEntry>((preset, index) => ({
-        id: `claude-${index}`,
-        preset,
-      }));
-  }, [appId]);
+    if (appId === "codex") {
+      return visiblePresetEntries("codex", codexProviderPresets);
+    } else if (appId === "gemini") {
+      return visiblePresetEntries("gemini", geminiProviderPresets);
+    } else if (appId === "opencode") {
+      return visiblePresetEntries("opencode", opencodeProviderPresets);
+    } else if (appId === "openclaw") {
+      return visiblePresetEntries("openclaw", openclawProviderPresets);
+    } else if (appId === "hermes") {
+      return visiblePresetEntries("hermes", hermesProviderPresets);
+    }
+    return visiblePresetEntries("claude", providerPresets);
+  }, [appId, providerContext]);
 
   const {
     templateValues,
@@ -1190,7 +1200,9 @@ function ProviderFormFull({
 
     // 确定 providerType（新建时从预设获取，编辑时从现有数据获取）
     const providerType =
-      templatePreset?.providerType || initialData?.meta?.providerType;
+      activePreset?.providerType ||
+      templatePreset?.providerType ||
+      initialData?.meta?.providerType;
 
     const nextMeta: ProviderMeta = {
       ...(baseMeta ?? {}),
@@ -1388,6 +1400,8 @@ function ProviderFormFull({
       category: entry.preset.category,
       isPartner: entry.preset.isPartner,
       partnerPromotionKey: entry.preset.partnerPromotionKey,
+      providerType:
+        "providerType" in entry.preset ? entry.preset.providerType : undefined,
     });
 
     if (appId === "codex") {
@@ -1520,6 +1534,28 @@ function ProviderFormFull({
     });
   };
 
+  useEffect(() => {
+    if (
+      providerContext !== "cursor" ||
+      initialData ||
+      didApplyCursorDefaultPresetRef.current
+    ) {
+      return;
+    }
+
+    const bistroCodeEntry = presetEntries.find(
+      (entry) =>
+        "providerType" in entry.preset &&
+        entry.preset.providerType === "bistrocode",
+    );
+    if (!bistroCodeEntry) {
+      return;
+    }
+
+    didApplyCursorDefaultPresetRef.current = true;
+    handlePresetChange(bistroCodeEntry.id);
+  }, [initialData, presetEntries, providerContext]);
+
   const settingsConfigErrorField = (
     <FormField
       control={form.control}
@@ -1549,6 +1585,7 @@ function ProviderFormFull({
               onUniversalPresetSelect={onUniversalPresetSelect}
               onManageUniversalProviders={onManageUniversalProviders}
               category={category}
+              showCustomPreset={providerContext !== "cursor"}
             />
           )}
 

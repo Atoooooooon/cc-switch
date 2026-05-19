@@ -11,10 +11,11 @@ import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import type { AppId } from "@/lib/api";
+import type { ProxyTakeoverStatus } from "@/types/proxy";
 
 interface ProxyToggleProps {
   className?: string;
-  activeApp: AppId;
+  activeApp: Exclude<AppId, "cursor">;
 }
 
 export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
@@ -30,7 +31,8 @@ export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
     }
   };
 
-  const takeoverEnabled = takeoverStatus?.[activeApp] || false;
+  const takeoverEnabled =
+    takeoverStatus?.[activeApp as keyof ProxyTakeoverStatus] || false;
 
   const appLabel =
     activeApp === "claude"

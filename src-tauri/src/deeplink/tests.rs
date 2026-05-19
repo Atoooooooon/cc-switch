@@ -35,6 +35,22 @@ fn test_parse_valid_claude_deeplink() {
 }
 
 #[test]
+fn test_parse_valid_bistrocode_deeplink_scheme() {
+    let url = "bistrocode://v1/import?resource=provider&app=claude&name=BistroCode&endpoint=https%3A%2F%2Fbistrocode.online&apiKey=sk-test";
+
+    let request = parse_deeplink_url(url).unwrap();
+
+    assert_eq!(request.version, "v1");
+    assert_eq!(request.resource, "provider");
+    assert_eq!(request.app, Some("claude".to_string()));
+    assert_eq!(request.name, Some("BistroCode".to_string()));
+    assert_eq!(
+        request.endpoint,
+        Some("https://bistrocode.online".to_string())
+    );
+}
+
+#[test]
 fn test_parse_deeplink_with_notes() {
     let url = "ccswitch://v1/import?resource=provider&app=codex&name=Codex&homepage=https%3A%2F%2Fcodex.com&endpoint=https%3A%2F%2Fapi.codex.com&apiKey=key123&notes=Test%20notes";
 

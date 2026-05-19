@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "CC Switch",
-    "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
+    "title": "BistroCode Switch",
+    "description": "BistroCode assistant for Claude Code / Codex / Gemini CLI / Cursor"
   },
   "common": {
     "add": "Add",
@@ -719,7 +719,8 @@
     "gemini": "Gemini",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
-    "hermes": "Hermes"
+    "hermes": "Hermes",
+    "cursor": "Cursor"
   },
   "sessionManager": {
     "title": "Session Manager",
@@ -1408,7 +1409,8 @@
         "gemini": "Gemini",
         "opencode": "OpenCode",
         "openclaw": "OpenClaw",
-        "hermes": "Hermes"
+        "hermes": "Hermes",
+        "cursor": "Cursor"
       }
     },
     "userLevelPath": "User-level MCP path",
@@ -1980,7 +1982,8 @@
       "codex": "Codex",
       "gemini": "Gemini",
       "opencode": "OpenCode",
-      "openclaw": "OpenClaw"
+      "openclaw": "OpenClaw",
+      "cursor": "Cursor"
     },
     "installFromZip": {
       "button": "Install from ZIP",
@@ -2625,5 +2628,9 @@
     "expiredHint": "Run the {{tool}} command to refresh your login",
     "queryFailed": "Query failed",
     "refresh": "Refresh"
+  },
+  "cursor": {
+    "copyProxyBaseUrl": "Copy Cursor Base URL",
+    "proxyBaseUrlCopied": "Cursor Base URL copied"
   }
 }

@@ -505,6 +505,70 @@ impl UniversalProvider {
         }
     }
 
+    fn new_api_usage_script(&self) -> Option<UsageScript> {
+        if self.provider_type != "newapi" && self.provider_type != "bistrocode" {
+            return None;
+        }
+
+        Some(UsageScript {
+            enabled: true,
+            language: "javascript".to_string(),
+            code: r#"({
+  request: {
+    url: "{{baseUrl}}/api/usage/token/",
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {{apiKey}}",
+      "User-Agent": "BistroCode/1.0"
+    }
+  },
+  extractor: function (response) {
+    if ((response.code === true || response.success === true) && response.data) {
+      const quotaPerUnit = 500000;
+      const unlimited = response.data.unlimited_quota === true;
+      return {
+        planName: response.data.name || "BistroCode",
+        remaining: unlimited ? -1 : response.data.total_available / quotaPerUnit,
+        used: response.data.total_used / quotaPerUnit,
+        total: unlimited ? -1 : response.data.total_granted / quotaPerUnit,
+        unit: "USD"
+      };
+    }
+    return {
+      isValid: false,
+      invalidMessage: response.message || "Query failed"
+    };
+  }
+})"#
+            .to_string(),
+            timeout: Some(10),
+            api_key: None,
+            base_url: None,
+            access_token: None,
+            user_id: None,
+            template_type: Some("newapi".to_string()),
+            auto_query_interval: Some(5),
+            coding_plan_provider: None,
+        })
+    }
+
+    fn child_meta(&self, api_format: Option<&str>) -> Option<ProviderMeta> {
+        let mut meta = self.meta.clone().unwrap_or_default();
+
+        if meta.usage_script.is_none() {
+            meta.usage_script = self.new_api_usage_script();
+        }
+        if meta.provider_type.is_none() {
+            meta.provider_type = Some(self.provider_type.clone());
+        }
+        if let Some(api_format) = api_format {
+            meta.api_format = Some(api_format.to_string());
+        }
+
+        Some(meta)
+    }
+
     /// 生成 Claude 供应商配置
     pub fn to_claude_provider(&self) -> Option<Provider> {
         if !self.apps.claude {
@@ -525,9 +589,16 @@ impl UniversalProvider {
             .and_then(|m| m.opus_model.clone())
             .unwrap_or_else(|| model.clone());
 
+        let base_url = self.base_url.trim_end_matches('/');
+        let anthropic_base_url = if base_url.ends_with("/v1") {
+            base_url.trim_end_matches("/v1").to_string()
+        } else {
+            base_url.to_string()
+        };
+
         let settings_config = serde_json::json!({
             "env": {
-                "ANTHROPIC_BASE_URL": self.base_url,
+                "ANTHROPIC_BASE_URL": anthropic_base_url,
                 "ANTHROPIC_AUTH_TOKEN": self.api_key,
                 "ANTHROPIC_MODEL": model,
                 "ANTHROPIC_DEFAULT_HAIKU_MODEL": haiku,
@@ -545,7 +616,7 @@ impl UniversalProvider {
             created_at: self.created_at,
             sort_index: self.sort_index,
             notes: self.notes.clone(),
-            meta: self.meta.clone(),
+            meta: self.child_meta(Some("openai_responses")),
             icon: self.icon.clone(),
             icon_color: self.icon_color.clone(),
             in_failover_queue: false,
@@ -610,7 +681,7 @@ requires_openai_auth = true"#
             created_at: self.created_at,
             sort_index: self.sort_index,
             notes: self.notes.clone(),
-            meta: self.meta.clone(),
+            meta: self.child_meta(None),
             icon: self.icon.clone(),
             icon_color: self.icon_color.clone(),
             in_failover_queue: false,
@@ -645,7 +716,7 @@ requires_openai_auth = true"#
             created_at: self.created_at,
             sort_index: self.sort_index,
             notes: self.notes.clone(),
-            meta: self.meta.clone(),
+            meta: self.child_meta(None),
             icon: self.icon.clone(),
             icon_color: self.icon_color.clone(),
             in_failover_queue: false,

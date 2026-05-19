@@ -252,6 +252,20 @@ export const iconMetadata: Record<string, IconMetadata> = {
     keywords: ["mistral"],
     defaultColor: "#FF7000",
   },
+  bistrocode: {
+    name: "bistrocode",
+    displayName: "BistroCode",
+    category: "other",
+    keywords: ["bistrocode", "bistro", "newapi"],
+    defaultColor: "currentColor",
+  },
+  cursor: {
+    name: "cursor",
+    displayName: "Cursor",
+    category: "ai-provider",
+    keywords: ["cursor", "anysphere"],
+    defaultColor: "currentColor",
+  },
   newapi: {
     name: "newapi",
     displayName: "newapi",

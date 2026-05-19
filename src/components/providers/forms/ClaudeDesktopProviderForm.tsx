@@ -49,6 +49,7 @@ import type {
   ProviderCategory,
   ProviderMeta,
 } from "@/types";
+import { BISTROCODE_HIDDEN_PRESET_NAMES } from "@/config/claudeProviderPresets";
 import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
 import {
   CLAUDE_DESKTOP_ROLE_ROUTE_IDS,
@@ -387,10 +388,14 @@ export function ClaudeDesktopProviderForm({
 
   const presetEntries = useMemo<PresetEntry[]>(
     () =>
-      claudeDesktopProviderPresets.map((preset, index) => ({
-        id: `claude-desktop-${index}`,
-        preset,
-      })),
+      claudeDesktopProviderPresets
+        .map((preset, index) => ({
+          id: `claude-desktop-${index}`,
+          preset,
+        }))
+        .filter(
+          (entry) => !BISTROCODE_HIDDEN_PRESET_NAMES.has(entry.preset.name),
+        ),
     [],
   );
 

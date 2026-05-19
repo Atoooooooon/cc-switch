@@ -16,7 +16,7 @@ use super::{
     },
     handler_context::RequestContext,
     providers::{
-        get_adapter, get_claude_api_format, streaming::create_anthropic_sse_stream,
+        cursor, get_adapter, get_claude_api_format, streaming::create_anthropic_sse_stream,
         streaming_gemini::create_anthropic_sse_stream_from_gemini,
         streaming_responses::create_anthropic_sse_stream_from_responses, transform,
         transform_gemini, transform_responses,
@@ -36,6 +36,7 @@ use crate::app_config::AppType;
 use crate::database::PRICING_SOURCE_REQUEST;
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use bytes::Bytes;
+use futures::StreamExt;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 
@@ -463,6 +464,314 @@ fn endpoint_with_query(uri: &axum::http::Uri, endpoint: &str) -> String {
         Some(query) => format!("{endpoint}?{query}"),
         None => endpoint.to_string(),
     }
+}
+
+// ============================================================================
+// Cursor API handlers
+// ============================================================================
+
+pub async fn handle_cursor_chat_completions(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_cursor_request(state, request, CursorResponseFormat::Chat).await
+}
+
+pub async fn handle_cursor_responses(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_cursor_request(state, request, CursorResponseFormat::Responses).await
+}
+
+pub async fn handle_cursor_models(
+    State(state): State<ProxyState>,
+) -> Result<Json<Value>, ProxyError> {
+    let provider = state
+        .provider_router
+        .select_providers("claude")
+        .await
+        .ok()
+        .and_then(|providers| providers.into_iter().next());
+
+    let mut ids = Vec::new();
+    if let Some(env) = provider
+        .as_ref()
+        .and_then(|provider| provider.settings_config.get("env"))
+    {
+        for key in [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        ] {
+            if let Some(model) = env.get(key).and_then(Value::as_str) {
+                if !model.trim().is_empty() && !ids.iter().any(|id: &String| id == model) {
+                    ids.push(model.to_string());
+                }
+            }
+        }
+    }
+    if ids.is_empty() {
+        ids.push("claude-sonnet-4-5".to_string());
+    }
+
+    Ok(Json(json!({
+        "object": "list",
+        "data": ids
+            .into_iter()
+            .map(|id| json!({ "id": id, "object": "model", "owned_by": "cc-switch" }))
+            .collect::<Vec<_>>()
+    })))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CursorResponseFormat {
+    Chat,
+    Responses,
+}
+
+async fn handle_cursor_request(
+    state: ProxyState,
+    request: axum::extract::Request,
+    response_format: CursorResponseFormat,
+) -> Result<axum::response::Response, ProxyError> {
+    let (parts, req_body) = request.into_parts();
+    let method = parts.method.clone();
+    let headers = parts.headers;
+    let extensions = parts.extensions;
+    let body_bytes = req_body
+        .collect()
+        .await
+        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .to_bytes();
+    let original_body: Value = serde_json::from_slice(&body_bytes)
+        .map_err(|e| ProxyError::Internal(format!("Failed to parse request body: {e}")))?;
+
+    let request_model = original_body
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let anthropic_body = match response_format {
+        CursorResponseFormat::Chat => cursor::chat_to_anthropic_request(original_body.clone())?,
+        CursorResponseFormat::Responses => {
+            cursor::responses_to_anthropic_request(original_body.clone())?
+        }
+    };
+
+    let mut ctx = RequestContext::new(
+        &state,
+        &anthropic_body,
+        &headers,
+        AppType::Claude,
+        "Cursor",
+        "claude",
+    )
+    .await?;
+
+    let is_stream = anthropic_body
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let forwarder = ctx.create_forwarder(&state);
+    let mut result = match forwarder
+        .forward_with_retry(
+            &AppType::Claude,
+            method,
+            "/v1/messages",
+            anthropic_body,
+            headers,
+            extensions,
+            ctx.get_providers(),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(mut err) => {
+            if let Some(provider) = err.provider.take() {
+                ctx.provider = provider;
+            }
+            log_forward_error(&state, &ctx, is_stream, &err.error);
+            return Err(err.error);
+        }
+    };
+
+    let connection_guard = result.connection_guard.take();
+    ctx.provider = result.provider;
+    let api_format = result
+        .claude_api_format
+        .as_deref()
+        .unwrap_or_else(|| get_claude_api_format(&ctx.provider))
+        .to_string();
+    process_cursor_response(
+        result.response,
+        &ctx,
+        &state,
+        response_format,
+        &api_format,
+        request_model,
+        connection_guard,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_cursor_response(
+    response: super::hyper_client::ProxyResponse,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    response_format: CursorResponseFormat,
+    api_format: &str,
+    request_model: String,
+    connection_guard: Option<ActiveConnectionGuard>,
+) -> Result<axum::response::Response, ProxyError> {
+    let status = response.status();
+    let should_stream = response.is_sse();
+
+    if should_stream {
+        let converted: std::pin::Pin<
+            Box<dyn futures::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
+        > = {
+            let stream = response.bytes_stream();
+            match api_format {
+                "openai_chat" => {
+                    let openai_stream = create_logged_passthrough_stream(
+                        stream,
+                        "[Cursor]",
+                        None,
+                        ctx.streaming_timeout_config(),
+                        None,
+                    );
+                    match response_format {
+                        CursorResponseFormat::Chat => Box::pin(openai_stream),
+                        CursorResponseFormat::Responses => {
+                            Box::pin(cursor::chat_sse_to_responses(openai_stream, request_model))
+                        }
+                    }
+                }
+                "openai_responses" => {
+                    let responses_stream = create_logged_passthrough_stream(
+                        stream,
+                        "[Cursor]",
+                        None,
+                        ctx.streaming_timeout_config(),
+                        None,
+                    );
+                    match response_format {
+                        CursorResponseFormat::Chat => Box::pin(cursor::responses_sse_to_chat(
+                            responses_stream,
+                            request_model,
+                        )),
+                        CursorResponseFormat::Responses => Box::pin(responses_stream),
+                    }
+                }
+                "gemini_native" => {
+                    let anthropic_stream = create_anthropic_sse_stream_from_gemini(
+                        stream,
+                        Some(state.gemini_shadow.clone()),
+                        Some(ctx.provider.id.clone()),
+                        Some(ctx.session_id.clone()),
+                        None,
+                    );
+                    match response_format {
+                        CursorResponseFormat::Chat => Box::pin(cursor::anthropic_sse_to_chat(
+                            anthropic_stream,
+                            request_model,
+                        )),
+                        CursorResponseFormat::Responses => Box::pin(
+                            cursor::anthropic_sse_to_responses(anthropic_stream, request_model),
+                        ),
+                    }
+                }
+                _ => match response_format {
+                    CursorResponseFormat::Chat => {
+                        Box::pin(cursor::anthropic_sse_to_chat(stream, request_model))
+                    }
+                    CursorResponseFormat::Responses => {
+                        Box::pin(cursor::anthropic_sse_to_responses(stream, request_model))
+                    }
+                },
+            }
+        };
+
+        let mut builder = axum::response::Response::builder().status(status);
+        builder = builder.header("content-type", "text/event-stream");
+        builder = builder.header("cache-control", "no-cache");
+        let body_stream = if let Some(guard) = connection_guard {
+            Box::pin(async_stream::stream! {
+                let _guard = guard;
+                let mut converted = converted;
+                while let Some(item) = converted.as_mut().next().await {
+                    yield item;
+                }
+            })
+                as std::pin::Pin<
+                    Box<dyn futures::Stream<Item = Result<Bytes, std::io::Error>> + Send>,
+                >
+        } else {
+            converted
+        };
+        return builder
+            .body(axum::body::Body::from_stream(body_stream))
+            .map_err(|e| ProxyError::Internal(format!("Failed to build response: {e}")));
+    }
+
+    let body_timeout =
+        if ctx.app_config.auto_failover_enabled && ctx.app_config.non_streaming_timeout > 0 {
+            std::time::Duration::from_secs(ctx.app_config.non_streaming_timeout as u64)
+        } else {
+            std::time::Duration::ZERO
+        };
+    let (mut response_headers, _status, body_bytes) =
+        read_decoded_body(response, ctx.tag, body_timeout).await?;
+
+    let upstream_response: Value = serde_json::from_slice(&body_bytes).map_err(|e| {
+        let body_str = String::from_utf8_lossy(&body_bytes);
+        log::error!("[Cursor] 解析上游响应失败: {e}, body: {body_str}");
+        ProxyError::TransformError(format!("Failed to parse upstream response: {e}"))
+    })?;
+
+    let anthropic_response = match api_format {
+        "anthropic" => upstream_response,
+        "openai_responses" => transform_responses::responses_to_anthropic(upstream_response)?,
+        "gemini_native" => transform_gemini::gemini_to_anthropic_with_shadow(
+            upstream_response,
+            Some(state.gemini_shadow.as_ref()),
+            Some(&ctx.provider.id),
+            Some(&ctx.session_id),
+        )?,
+        "openai_chat" => transform::openai_to_anthropic(upstream_response)?,
+        _ => upstream_response,
+    };
+
+    let cursor_response = match response_format {
+        CursorResponseFormat::Chat => cursor::anthropic_to_chat_response(
+            anthropic_response,
+            Some(uuid::Uuid::new_v4().to_string()),
+        )?,
+        CursorResponseFormat::Responses => {
+            cursor::anthropic_to_responses_response(anthropic_response, &request_model)?
+        }
+    };
+
+    if let Some(guard) = connection_guard {
+        drop(guard);
+    }
+
+    let mut builder = axum::response::Response::builder().status(status);
+    strip_entity_headers_for_rebuilt_body(&mut response_headers);
+    strip_hop_by_hop_response_headers(&mut response_headers);
+    for (key, value) in response_headers.iter() {
+        builder = builder.header(key, value);
+    }
+    builder = builder.header("content-type", "application/json");
+    let response_body = serde_json::to_vec(&cursor_response)
+        .map_err(|e| ProxyError::TransformError(format!("Failed to serialize response: {e}")))?;
+    builder
+        .body(axum::body::Body::from(response_body))
+        .map_err(|e| ProxyError::Internal(format!("Failed to build response: {e}")))
 }
 
 // ============================================================================

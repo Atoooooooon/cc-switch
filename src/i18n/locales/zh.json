@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "CC Switch",
-    "description": "Claude Code / Codex / Gemini CLI 全方位辅助工具"
+    "title": "BistroCode Switch",
+    "description": "BistroCode 专属 Claude Code / Codex / Gemini CLI / Cursor 辅助工具"
   },
   "common": {
     "add": "添加",
@@ -719,7 +719,8 @@
     "gemini": "Gemini",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
-    "hermes": "Hermes"
+    "hermes": "Hermes",
+    "cursor": "Cursor"
   },
   "sessionManager": {
     "title": "会话管理",
@@ -1408,7 +1409,8 @@
         "gemini": "Gemini",
         "opencode": "OpenCode",
         "openclaw": "OpenClaw",
-        "hermes": "Hermes"
+        "hermes": "Hermes",
+        "cursor": "Cursor"
       }
     },
     "userLevelPath": "用户级 MCP 配置路径",
@@ -1980,7 +1982,8 @@
       "codex": "Codex",
       "gemini": "Gemini",
       "opencode": "OpenCode",
-      "openclaw": "OpenClaw"
+      "openclaw": "OpenClaw",
+      "cursor": "Cursor"
     },
     "installFromZip": {
       "button": "从 ZIP 安装",
@@ -2625,5 +2628,9 @@
     "expiredHint": "请运行 {{tool}} 命令刷新登录",
     "queryFailed": "查询失败",
     "refresh": "刷新"
+  },
+  "cursor": {
+    "copyProxyBaseUrl": "复制 Cursor Base URL",
+    "proxyBaseUrlCopied": "Cursor Base URL 已复制"
   }
 }

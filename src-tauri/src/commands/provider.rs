@@ -9,13 +9,55 @@ use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
 use crate::store::AppState;
+use regex::Regex;
 use std::str::FromStr;
 
 // 常量定义
 const TEMPLATE_TYPE_GITHUB_COPILOT: &str = "github_copilot";
 const TEMPLATE_TYPE_TOKEN_PLAN: &str = "token_plan";
 const TEMPLATE_TYPE_BALANCE: &str = "balance";
+const TEMPLATE_TYPE_NEWAPI: &str = "newapi";
 const COPILOT_UNIT_PREMIUM: &str = "requests";
+
+fn extract_usage_api_key(provider: Option<&Provider>) -> Option<&str> {
+    let settings_config = &provider?.settings_config;
+    settings_config
+        .get("env")
+        .and_then(|e| {
+            e.get("ANTHROPIC_AUTH_TOKEN")
+                .or_else(|| e.get("ANTHROPIC_API_KEY"))
+                .or_else(|| e.get("GEMINI_API_KEY"))
+                .and_then(|v| v.as_str())
+        })
+        .or_else(|| {
+            settings_config
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(|v| v.as_str())
+        })
+}
+
+fn extract_usage_base_url(provider: Option<&Provider>) -> Option<String> {
+    let settings_config = &provider?.settings_config;
+    settings_config
+        .get("env")
+        .and_then(|e| {
+            e.get("ANTHROPIC_BASE_URL")
+                .or_else(|| e.get("GOOGLE_GEMINI_BASE_URL"))
+                .and_then(|v| v.as_str())
+        })
+        .map(|s| s.trim_end_matches('/').to_string())
+        .or_else(|| {
+            let config_toml = settings_config.get("config").and_then(|v| v.as_str())?;
+            Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#)
+                .ok()
+                .and_then(|re| {
+                    re.captures(config_toml)
+                        .and_then(|caps| caps.get(1))
+                        .map(|m| m.as_str().trim_end_matches("/v1").to_string())
+                })
+        })
+}
 
 /// 获取所有供应商
 #[tauri::command]
@@ -456,24 +498,10 @@ async fn query_provider_usage_inner(
     // ── Coding Plan 专用路径 ──
     if template_type == TEMPLATE_TYPE_TOKEN_PLAN {
         // 从供应商配置中提取 API Key 和 Base URL
-        let settings_config = provider
-            .map(|p| &p.settings_config)
-            .cloned()
-            .unwrap_or_default();
-        let env = settings_config.get("env");
-        let base_url = env
-            .and_then(|e| e.get("ANTHROPIC_BASE_URL"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let api_key = env
-            .and_then(|e| {
-                e.get("ANTHROPIC_AUTH_TOKEN")
-                    .or_else(|| e.get("ANTHROPIC_API_KEY"))
-            })
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let base_url = extract_usage_base_url(provider).unwrap_or_default();
+        let api_key = extract_usage_api_key(provider).unwrap_or("");
 
-        let quota = crate::services::coding_plan::get_coding_plan_quota(base_url, api_key)
+        let quota = crate::services::coding_plan::get_coding_plan_quota(&base_url, api_key)
             .await
             .map_err(|e| format!("Failed to query coding plan: {e}"))?;
 
@@ -515,26 +543,34 @@ async fn query_provider_usage_inner(
 
     // ── 官方余额查询路径 ──
     if template_type == TEMPLATE_TYPE_BALANCE {
-        let settings_config = provider
-            .map(|p| &p.settings_config)
-            .cloned()
-            .unwrap_or_default();
-        let env = settings_config.get("env");
-        let base_url = env
-            .and_then(|e| e.get("ANTHROPIC_BASE_URL"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let api_key = env
-            .and_then(|e| {
-                e.get("ANTHROPIC_AUTH_TOKEN")
-                    .or_else(|| e.get("ANTHROPIC_API_KEY"))
-            })
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let base_url = extract_usage_base_url(provider).unwrap_or_default();
+        let api_key = extract_usage_api_key(provider).unwrap_or("");
 
-        return crate::services::balance::get_balance(base_url, api_key)
+        return crate::services::balance::get_balance(&base_url, api_key)
             .await
             .map_err(|e| format!("Failed to query balance: {e}"));
+    }
+
+    // ── NewAPI / BistroCode Bearer Key 用量查询路径 ──
+    if template_type == TEMPLATE_TYPE_NEWAPI {
+        let usage_script = usage_script.cloned();
+        let api_key = usage_script
+            .as_ref()
+            .and_then(|s| s.api_key.as_deref())
+            .filter(|s| !s.is_empty())
+            .or_else(|| extract_usage_api_key(provider))
+            .unwrap_or("");
+        let base_url = usage_script
+            .as_ref()
+            .and_then(|s| s.base_url.as_deref())
+            .filter(|s| !s.is_empty())
+            .map(ToString::to_string)
+            .or_else(|| extract_usage_base_url(provider))
+            .unwrap_or_default();
+
+        return crate::services::balance::get_balance(&base_url, api_key)
+            .await
+            .map_err(|e| format!("Failed to query NewAPI usage: {e}"));
     }
 
     // ── 通用 JS 脚本路径 ──

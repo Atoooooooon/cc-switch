@@ -336,9 +336,13 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <img src={appIcon} alt="CC Switch" className="h-5 w-5" />
+              <img
+                src={appIcon}
+                alt="BistroCode Switch"
+                className="h-4 w-4 shrink-0"
+              />
               <h4 className="text-lg font-semibold text-foreground">
-                CC Switch
+                BistroCode Switch
               </h4>
             </div>
             <div className="flex items-center gap-2">

@@ -47,6 +47,18 @@ export interface DataSourceSummary {
   totalCostUsd: string;
 }
 
+export interface BistroCodeUsageEstimate {
+  officialCostUsd: string;
+  bistrocodeCostUsd: string;
+  estimatedSavingsUsd: string;
+  bistrocodeQuotaUsed: number;
+  pricedRequests: number;
+  unpricedRequests: number;
+  totalRequests: number;
+  officialTotalTokens: number;
+  bistrocodeTotalTokens: number;
+}
+
 export interface PaginatedLogs {
   data: RequestLog[];
   total: number;

@@ -14,10 +14,11 @@ import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import type { AppId } from "@/lib/api";
+import type { ProxyTakeoverStatus } from "@/types/proxy";
 
 interface FailoverToggleProps {
   className?: string;
-  activeApp: AppId;
+  activeApp: Exclude<AppId, "cursor">;
 }
 
 export function FailoverToggle({ className, activeApp }: FailoverToggleProps) {
@@ -26,7 +27,8 @@ export function FailoverToggle({ className, activeApp }: FailoverToggleProps) {
     useAutoFailoverEnabled(activeApp);
   const setEnabled = useSetAutoFailoverEnabled();
   const { takeoverStatus } = useProxyStatus();
-  const takeoverEnabled = takeoverStatus?.[activeApp] ?? false;
+  const takeoverEnabled =
+    takeoverStatus?.[activeApp as keyof ProxyTakeoverStatus] ?? false;
 
   const handleToggle = (checked: boolean) => {
     if (checked && !takeoverEnabled) return;

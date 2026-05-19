@@ -21,11 +21,52 @@ import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPres
 import { extractCodexBaseUrl } from "@/utils/providerConfigUtils";
 import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
 import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
+import { createUsageScript } from "@/types";
+import { TEMPLATE_TYPES } from "@/config/constants";
+
+function createBistroCodeUsageScript() {
+  return createUsageScript({
+    enabled: true,
+    templateType: TEMPLATE_TYPES.NEW_API,
+    code: `({
+  request: {
+    url: "{{baseUrl}}/api/usage/token/",
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {{apiKey}}",
+      "User-Agent": "BistroCode/1.0"
+    }
+  },
+  extractor: function (response) {
+    if ((response.code === true || response.success === true) && response.data) {
+      const quotaPerUnit = 500000;
+      const unlimited = response.data.unlimited_quota === true;
+      return {
+        planName: response.data.name || "BistroCode",
+        remaining: unlimited ? -1 : response.data.total_available / quotaPerUnit,
+        used: response.data.total_used / quotaPerUnit,
+        total: unlimited ? -1 : response.data.total_granted / quotaPerUnit,
+        unit: "USD"
+      };
+    }
+    return {
+      isValid: false,
+      invalidMessage: response.message || "Query failed"
+    };
+  }
+})`,
+    timeout: 10,
+    baseUrl: "https://bistrocode.online",
+    autoQueryInterval: 5,
+  });
+}
 
 interface AddProviderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   appId: AppId;
+  providerContext?: "default" | "cursor";
   onSubmit: (
     provider: Omit<Provider, "id"> & {
       providerKey?: string;
@@ -38,11 +79,13 @@ export function AddProviderDialog({
   open,
   onOpenChange,
   appId,
+  providerContext = "default",
   onSubmit,
 }: AddProviderDialogProps) {
   const { t } = useTranslation();
   // OpenCode and OpenClaw don't support universal providers
   const showUniversalTab =
+    providerContext !== "cursor" &&
     appId !== "opencode" &&
     appId !== "openclaw" &&
     appId !== "hermes" &&
@@ -108,6 +151,14 @@ export function AddProviderDialog({
         ...(values.presetCategory ? { category: values.presetCategory } : {}),
         ...(values.meta ? { meta: values.meta } : {}),
       };
+
+      if (providerData.meta?.providerType === "bistrocode") {
+        providerData.meta = {
+          ...providerData.meta,
+          usage_script:
+            providerData.meta.usage_script ?? createBistroCodeUsageScript(),
+        };
+      }
 
       // OpenCode/OpenClaw: pass providerKey for ID generation
       if (
@@ -191,6 +242,13 @@ export function AddProviderDialog({
               }
               addUrl(preset.baseUrl);
             }
+          }
+        }
+
+        if (providerData.meta?.providerType === "bistrocode") {
+          addUrl("https://bistrocode.online");
+          if (appId === "codex") {
+            addUrl("https://bistrocode.online/v1");
           }
         }
 
@@ -328,6 +386,7 @@ export function AddProviderDialog({
           <TabsContent value="app-specific" className="mt-0">
             <ProviderForm
               appId={appId}
+              providerContext={providerContext}
               submitLabel={t("common.add")}
               onSubmit={handleSubmit}
               onCancel={() => onOpenChange(false)}
@@ -344,6 +403,7 @@ export function AddProviderDialog({
         // OpenCode/OpenClaw: directly show form without tabs
         <ProviderForm
           appId={appId}
+          providerContext={providerContext}
           submitLabel={t("common.add")}
           onSubmit={handleSubmit}
           onCancel={() => onOpenChange(false)}

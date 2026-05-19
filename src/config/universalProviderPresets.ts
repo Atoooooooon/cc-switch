@@ -54,24 +54,40 @@ const NEWAPI_DEFAULT_MODELS: UniversalProviderModels = {
   },
 };
 
+const BISTROCODE_DEFAULT_MODELS: UniversalProviderModels = {
+  claude: {
+    model: "claude-sonnet-4-6",
+    haikuModel: "claude-haiku-4-5-20251001",
+    sonnetModel: "claude-sonnet-4-6",
+    opusModel: "claude-opus-4-7",
+  },
+  codex: {
+    model: "gpt-5.4",
+    reasoningEffort: "high",
+  },
+  gemini: {
+    model: "gemini-3.1-pro",
+  },
+};
+
 /**
  * 统一供应商预设列表
  */
 export const universalProviderPresets: UniversalProviderPreset[] = [
   {
-    name: "NewAPI",
-    providerType: "newapi",
+    name: "BistroCode",
+    providerType: "bistrocode",
     defaultApps: {
       claude: true,
       codex: true,
       gemini: true,
     },
-    defaultModels: NEWAPI_DEFAULT_MODELS,
-    websiteUrl: "https://www.newapi.pro",
-    icon: "newapi",
-    iconColor: "#00A67E",
+    defaultModels: BISTROCODE_DEFAULT_MODELS,
+    websiteUrl: "https://bistrocode.online",
+    icon: "bistrocode",
+    iconColor: "#16A34A",
     description:
-      "NewAPI 是一个可自部署的 API 网关，支持 Anthropic、OpenAI、Gemini 等多种协议",
+      "BistroCode 专属 API 网关，支持 Claude Code、Codex、Gemini 与 Cursor 本地代理，并内置余额用量查询",
   },
   {
     name: "自定义网关",
@@ -99,17 +115,63 @@ export function createUniversalProviderFromPreset(
   apiKey: string,
   customName?: string,
 ): UniversalProvider {
+  const normalizedBaseUrl =
+    preset.providerType === "bistrocode" && !baseUrl.trim()
+      ? "https://bistrocode.online"
+      : baseUrl.trim();
+
   return {
     id,
     name: customName || preset.name,
     providerType: preset.providerType,
     apps: { ...preset.defaultApps },
-    baseUrl,
+    baseUrl: normalizedBaseUrl,
     apiKey,
     models: JSON.parse(JSON.stringify(preset.defaultModels)), // Deep copy
     websiteUrl: preset.websiteUrl,
     icon: preset.icon,
     iconColor: preset.iconColor,
+    meta:
+      preset.providerType === "bistrocode" || preset.providerType === "newapi"
+        ? {
+            providerType: preset.providerType,
+            usage_script: {
+              enabled: true,
+              language: "javascript",
+              code: `({
+  request: {
+    url: "{{baseUrl}}/api/usage/token/",
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {{apiKey}}",
+      "User-Agent": "BistroCode/1.0"
+    }
+  },
+  extractor: function (response) {
+    if ((response.code === true || response.success === true) && response.data) {
+      const quotaPerUnit = 500000;
+      const unlimited = response.data.unlimited_quota === true;
+      return {
+        planName: response.data.name || "BistroCode",
+        remaining: unlimited ? -1 : response.data.total_available / quotaPerUnit,
+        used: response.data.total_used / quotaPerUnit,
+        total: unlimited ? -1 : response.data.total_granted / quotaPerUnit,
+        unit: "USD"
+      };
+    }
+    return {
+      isValid: false,
+      invalidMessage: response.message || "Query failed"
+    };
+  }
+})`,
+              timeout: 10,
+              templateType: "newapi",
+              autoQueryInterval: 5,
+            },
+          }
+        : undefined,
     createdAt: Date.now(),
   };
 }

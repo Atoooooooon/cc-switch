@@ -12,6 +12,7 @@ import type {
   PaginatedLogs,
   SessionSyncResult,
   DataSourceSummary,
+  BistroCodeUsageEstimate,
 } from "@/types/usage";
 import type { UsageResult } from "@/types";
 import type { AppId } from "./types";
@@ -101,6 +102,13 @@ export const usageApi = {
 
   getRequestDetail: async (requestId: string): Promise<RequestLog | null> => {
     return invoke("get_request_detail", { requestId });
+  },
+
+  getBistroCodeUsageEstimate: async (
+    startDate?: number,
+    endDate?: number,
+  ): Promise<BistroCodeUsageEstimate> => {
+    return invoke("get_bistrocode_usage_estimate", { startDate, endDate });
   },
 
   getModelPricing: async (): Promise<ModelPricing[]> => {

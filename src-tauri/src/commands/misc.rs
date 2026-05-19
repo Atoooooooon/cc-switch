@@ -27,11 +27,48 @@ pub async fn open_external(app: AppHandle, url: String) -> Result<bool, String> 
         format!("https://{url}")
     };
 
-    app.opener()
-        .open_url(&url, None::<String>)
-        .map_err(|e| format!("打开链接失败: {e}"))?;
+    if open_external_with_system(&url).is_err() {
+        app.opener()
+            .open_url(&url, None::<String>)
+            .map_err(|e| format!("打开链接失败: {e}"))?;
+    }
 
     Ok(true)
+}
+
+fn open_external_with_system(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("打开链接失败: {e}"))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut command = std::process::Command::new("cmd");
+        command
+            .args(["/C", "start", "", url])
+            .creation_flags(CREATE_NO_WINDOW);
+        command
+            .spawn()
+            .map_err(|e| format!("打开链接失败: {e}"))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("打开链接失败: {e}"))?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err("打开链接失败: 当前系统不支持自动打开浏览器".to_string())
 }
 
 #[tauri::command]

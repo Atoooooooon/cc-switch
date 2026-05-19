@@ -3,6 +3,38 @@
  */
 import { ProviderCategory } from "../types";
 
+export const BISTROCODE_HIDDEN_PRESET_NAMES = new Set([
+  "Shengsuanyun",
+  "PatewayAI",
+  "AiHubMix",
+  "DMXAPI",
+  "PackyCode",
+  "ClaudeAPI",
+  "ClaudeCN",
+  "RunAPI",
+  "RelaxyCode",
+  "Cubence",
+  "AIGoCode",
+  "RightCode",
+  "AICodeMirror",
+  "AICoding",
+  "CrazyRouter",
+  "SSSAiCode",
+  "Compshare",
+  "Compshare Coding Plan",
+  "Micu",
+  "CTok.ai",
+  "E-FlowCode",
+  "LemonData",
+  "PIPELLM",
+  "OpenRouter",
+  "TheRouter",
+  "ModelScope",
+  "SiliconFlow",
+  "SiliconFlow en",
+  "Novita AI",
+]);
+
 export interface TemplateValueConfig {
   label: string;
   placeholder: string;
@@ -59,7 +91,7 @@ export interface ProviderPreset {
   // 供应商类型标识（用于特殊供应商检测）
   // - "github_copilot": GitHub Copilot 供应商（需要 OAuth 认证）
   // - "codex_oauth": OpenAI Codex via ChatGPT Plus/Pro 反代（需要 OAuth 认证）
-  providerType?: "github_copilot" | "codex_oauth";
+  providerType?: string;
 
   // 是否需要 OAuth 认证（而非 API Key）
   requiresOAuth?: boolean;
@@ -73,6 +105,28 @@ export interface ProviderPreset {
 }
 
 export const providerPresets: ProviderPreset[] = [
+  {
+    name: "BistroCode",
+    websiteUrl: "https://bistrocode.online",
+    apiKeyUrl: "https://bistrocode.online",
+    apiKeyField: "ANTHROPIC_AUTH_TOKEN",
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: "https://bistrocode.online",
+        ANTHROPIC_AUTH_TOKEN: "",
+        ANTHROPIC_MODEL: "claude-sonnet-4-6",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5-20251001",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-6",
+        ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-7",
+      },
+    },
+    category: "aggregator",
+    icon: "bistrocode",
+    iconColor: "#16A34A",
+    apiFormat: "openai_responses",
+    providerType: "bistrocode",
+    endpointCandidates: ["https://bistrocode.online"],
+  },
   {
     name: "Claude Official",
     websiteUrl: "https://www.anthropic.com/claude-code",

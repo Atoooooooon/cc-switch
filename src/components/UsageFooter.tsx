@@ -195,7 +195,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
                 {t("usage.used")}
               </span>
               <span className="tabular-nums text-gray-600 dark:text-gray-400 font-medium">
-                {firstUsage.used.toFixed(2)}
+                {firstUsage.used === -1 ? "∞" : firstUsage.used.toFixed(2)}
               </span>
             </div>
           )}
@@ -216,7 +216,9 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
                       : "text-green-600 dark:text-green-400"
                 }`}
               >
-                {firstUsage.remaining.toFixed(2)}
+                {firstUsage.remaining === -1
+                  ? "∞"
+                  : firstUsage.remaining.toFixed(2)}
               </span>
             </div>
           )}
@@ -361,7 +363,7 @@ const UsagePlanItem: React.FC<{ data: UsageData }> = ({ data }) => {
               {t("usage.used")}
             </span>
             <span className="tabular-nums text-gray-600 dark:text-gray-400">
-              {used.toFixed(2)}
+              {used === -1 ? "∞" : used.toFixed(2)}
             </span>
             <span className="text-gray-400 dark:text-gray-600">|</span>
           </>
@@ -382,7 +384,7 @@ const UsagePlanItem: React.FC<{ data: UsageData }> = ({ data }) => {
                     : "text-green-600 dark:text-green-400"
               }`}
             >
-              {remaining.toFixed(2)}
+              {remaining === -1 ? "∞" : remaining.toFixed(2)}
             </span>
           </>
         )}

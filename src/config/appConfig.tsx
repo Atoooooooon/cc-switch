@@ -8,6 +8,8 @@ import {
 } from "@/components/BrandIcons";
 import { ProviderIcon } from "@/components/ProviderIcon";
 
+export type NonCursorAppId = Exclude<AppId, "cursor">;
+
 export interface AppConfig {
   label: string;
   icon: React.ReactNode;
@@ -18,6 +20,7 @@ export interface AppConfig {
 export const APP_IDS: AppId[] = [
   "claude",
   "claude-desktop",
+  "cursor",
   "codex",
   "gemini",
   "opencode",
@@ -26,7 +29,7 @@ export const APP_IDS: AppId[] = [
 ];
 
 /** App IDs shown in Skills panels (excludes OpenClaw — it doesn't support Skills) */
-export const SKILLS_APP_IDS: AppId[] = [
+export const SKILLS_APP_IDS: NonCursorAppId[] = [
   "claude",
   "codex",
   "gemini",
@@ -35,7 +38,7 @@ export const SKILLS_APP_IDS: AppId[] = [
 ];
 
 /** App IDs shown in MCP panels (excludes OpenClaw) */
-export const MCP_APP_IDS: AppId[] = [...SKILLS_APP_IDS];
+export const MCP_APP_IDS: NonCursorAppId[] = [...SKILLS_APP_IDS];
 
 export const APP_ICON_MAP: Record<AppId, AppConfig> = {
   claude: {
@@ -53,6 +56,16 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
       "bg-amber-500/10 ring-1 ring-amber-500/20 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300",
     badgeClass:
       "bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border-0 gap-1.5",
+  },
+  cursor: {
+    label: "Cursor",
+    icon: (
+      <ProviderIcon icon="cursor" name="Cursor" size={14} showFallback={true} />
+    ),
+    activeClass:
+      "bg-zinc-500/10 ring-1 ring-zinc-500/20 hover:bg-zinc-500/20 text-zinc-700 dark:text-zinc-300",
+    badgeClass:
+      "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-500/20 border-0 gap-1.5",
   },
   codex: {
     label: "Codex",

@@ -9,6 +9,7 @@ use std::time::Duration;
 // ── 供应商检测 ──────────────────────────────────────────────
 
 enum BalanceProvider {
+    NewApi,
     DeepSeek,
     StepFun,
     SiliconFlow,
@@ -19,7 +20,9 @@ enum BalanceProvider {
 
 fn detect_provider(base_url: &str) -> Option<BalanceProvider> {
     let url = base_url.to_lowercase();
-    if url.contains("api.deepseek.com") {
+    if url.contains("bistrocode.online") || url.contains("new-api") || url.contains("newapi") {
+        Some(BalanceProvider::NewApi)
+    } else if url.contains("api.deepseek.com") {
         Some(BalanceProvider::DeepSeek)
     } else if url.contains("api.stepfun.ai") || url.contains("api.stepfun.com") {
         Some(BalanceProvider::StepFun)
@@ -34,6 +37,24 @@ fn detect_provider(base_url: &str) -> Option<BalanceProvider> {
     } else {
         None
     }
+}
+
+fn normalize_base_url(base_url: &str) -> String {
+    base_url.trim().trim_end_matches('/').to_string()
+}
+
+fn normalize_new_api_site_url(base_url: &str) -> String {
+    let base_url = normalize_base_url(base_url);
+    for suffix in ["/compatible-mode/v1", "/openai/v1", "/api/v1", "/v1"] {
+        if let Some(stripped) = base_url.strip_suffix(suffix) {
+            return stripped.trim_end_matches('/').to_string();
+        }
+    }
+    base_url
+}
+
+fn quota_to_usd(quota: Option<f64>) -> Option<f64> {
+    quota.map(|value| value / 500_000.0)
 }
 
 fn make_error(msg: String) -> UsageResult {
@@ -58,6 +79,109 @@ fn make_auth_error(status: reqwest::StatusCode) -> UsageResult {
             extra: None,
         }]),
         error: Some(format!("Authentication failed (HTTP {status})")),
+    }
+}
+
+// ── New API / BistroCode ────────────────────────────────────
+// GET https://example.com/api/usage/token/
+// Response: { code: true, data: { name, total_granted, total_used, total_available, unlimited_quota, expires_at } }
+
+async fn query_new_api(base_url: &str, api_key: &str) -> UsageResult {
+    let client = crate::proxy::http_client::get();
+    let base_url = normalize_new_api_site_url(base_url);
+    if base_url.is_empty() {
+        return make_error("Base URL is empty".to_string());
+    }
+
+    let url = format!("{base_url}/api/usage/token/");
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Accept", "application/json")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await;
+
+    let resp = match resp {
+        Ok(r) => r,
+        Err(e) => return make_error(format!("Network error: {e}")),
+    };
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return make_auth_error(status);
+    }
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return make_error(format!("API error (HTTP {status}): {body}"));
+    }
+
+    let body: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => return make_error(format!("Failed to parse response: {e}")),
+    };
+
+    new_api_usage_from_value(&body)
+}
+
+fn new_api_usage_from_value(body: &serde_json::Value) -> UsageResult {
+    let success = body
+        .get("code")
+        .and_then(|v| v.as_bool())
+        .or_else(|| body.get("success").and_then(|v| v.as_bool()))
+        .unwrap_or(true);
+    if !success {
+        let message = body
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("New API usage query failed");
+        return make_error(message.to_string());
+    }
+
+    let data = body.get("data").unwrap_or(&body);
+    let unlimited = data
+        .get("unlimited_quota")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let name = data
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("BistroCode");
+    let expires_at = data.get("expires_at").and_then(|v| {
+        v.as_i64()
+            .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+    });
+    let extra = expires_at.and_then(|ts| {
+        if ts > 0 {
+            chrono::DateTime::from_timestamp(ts, 0)
+                .map(|dt| format!("Expires {}", dt.format("%Y-%m-%d")))
+        } else {
+            None
+        }
+    });
+
+    let remaining = quota_to_usd(parse_f64_field(data, "total_available"));
+    let used = quota_to_usd(parse_f64_field(data, "total_used"));
+    let total = quota_to_usd(parse_f64_field(data, "total_granted"));
+
+    UsageResult {
+        success: true,
+        data: Some(vec![UsageData {
+            plan_name: Some(name.to_string()),
+            remaining: if unlimited { Some(-1.0) } else { remaining },
+            total: if unlimited { Some(-1.0) } else { total },
+            used,
+            unit: Some("USD".to_string()),
+            is_valid: Some(unlimited || remaining.unwrap_or(0.0) > 0.0),
+            invalid_message: if !unlimited && remaining.unwrap_or(0.0) <= 0.0 {
+                Some("No credits remaining".to_string())
+            } else {
+                None
+            },
+            extra,
+        }]),
+        error: None,
     }
 }
 
@@ -406,6 +530,7 @@ pub async fn get_balance(base_url: &str, api_key: &str) -> Result<UsageResult, S
     };
 
     let result = match provider {
+        BalanceProvider::NewApi => query_new_api(base_url, api_key).await,
         BalanceProvider::DeepSeek => query_deepseek(api_key).await,
         BalanceProvider::StepFun => query_stepfun(api_key).await,
         BalanceProvider::SiliconFlow => query_siliconflow(api_key, true).await,
@@ -415,4 +540,80 @@ pub async fn get_balance(base_url: &str, api_key: &str) -> Result<UsageResult, S
     };
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        detect_provider, new_api_usage_from_value, normalize_new_api_site_url, BalanceProvider,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn detects_bistrocode_as_new_api_provider() {
+        assert!(matches!(
+            detect_provider("https://bistrocode.online/v1"),
+            Some(BalanceProvider::NewApi)
+        ));
+    }
+
+    #[test]
+    fn strips_openai_compat_suffix_for_new_api_usage_endpoint() {
+        assert_eq!(
+            normalize_new_api_site_url("https://bistrocode.online/v1"),
+            "https://bistrocode.online"
+        );
+        assert_eq!(
+            normalize_new_api_site_url("https://example.com/api/v1/"),
+            "https://example.com"
+        );
+        assert_eq!(
+            normalize_new_api_site_url("https://example.com/compatible-mode/v1"),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn parses_new_api_quota_response_as_usd_usage() {
+        let result = new_api_usage_from_value(&json!({
+            "code": true,
+            "data": {
+                "name": "BistroCode Pro",
+                "total_granted": 1_500_000,
+                "total_used": "500000",
+                "total_available": 1_000_000,
+                "unlimited_quota": false,
+                "expires_at": 1893456000
+            }
+        }));
+
+        assert!(result.success);
+        let row = result.data.as_ref().unwrap().first().unwrap();
+        assert_eq!(row.plan_name.as_deref(), Some("BistroCode Pro"));
+        assert_eq!(row.total, Some(3.0));
+        assert_eq!(row.used, Some(1.0));
+        assert_eq!(row.remaining, Some(2.0));
+        assert_eq!(row.unit.as_deref(), Some("USD"));
+        assert_eq!(row.is_valid, Some(true));
+        assert_eq!(row.extra.as_deref(), Some("Expires 2030-01-01"));
+    }
+
+    #[test]
+    fn parses_new_api_unlimited_quota() {
+        let result = new_api_usage_from_value(&json!({
+            "success": true,
+            "data": {
+                "name": "Unlimited",
+                "total_used": 250000,
+                "unlimited_quota": true
+            }
+        }));
+
+        let row = result.data.as_ref().unwrap().first().unwrap();
+        assert_eq!(row.remaining, Some(-1.0));
+        assert_eq!(row.total, Some(-1.0));
+        assert_eq!(row.used, Some(0.5));
+        assert_eq!(row.is_valid, Some(true));
+        assert_eq!(row.invalid_message, None);
+    }
 }

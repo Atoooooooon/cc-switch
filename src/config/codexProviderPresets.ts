@@ -24,6 +24,10 @@ export interface CodexProviderPreset {
   // 图标配置
   icon?: string; // 图标名称
   iconColor?: string; // 图标颜色
+  // 是否在 UI 中隐藏该预设（保留数据兼容，不展示为默认推荐）
+  hidden?: boolean;
+  // 供应商类型标识（用于 BistroCode/NewAPI 等定制逻辑）
+  providerType?: string;
 }
 
 /**
@@ -63,6 +67,22 @@ requires_openai_auth = true`;
 }
 
 export const codexProviderPresets: CodexProviderPreset[] = [
+  {
+    name: "BistroCode",
+    websiteUrl: "https://bistrocode.online",
+    apiKeyUrl: "https://bistrocode.online",
+    category: "aggregator",
+    auth: generateThirdPartyAuth(""),
+    config: generateThirdPartyConfig(
+      "bistrocode",
+      "https://bistrocode.online/v1",
+      "gpt-5.4",
+    ),
+    endpointCandidates: ["https://bistrocode.online/v1"],
+    icon: "bistrocode",
+    iconColor: "#16A34A",
+    providerType: "bistrocode",
+  },
   {
     name: "OpenAI Official",
     websiteUrl: "https://chatgpt.com/codex",

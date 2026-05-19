@@ -60,6 +60,8 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
+use std::collections::HashSet;
 #[cfg(target_os = "macos")]
 use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -98,7 +100,7 @@ fn redact_url_for_log(url_str: &str) -> String {
     }
 }
 
-/// 统一处理 ccswitch:// 深链接 URL
+/// 统一处理 BistroCode/CC Switch 深链接 URL
 ///
 /// - 解析 URL
 /// - 向前端发射 `deeplink-import` / `deeplink-error` 事件
@@ -109,8 +111,25 @@ fn handle_deeplink_url(
     focus_main_window: bool,
     source: &str,
 ) -> bool {
-    if !url_str.starts_with("ccswitch://") {
+    if !url_str.starts_with("bistrocode://") && !url_str.starts_with("ccswitch://") {
         return false;
+    }
+
+    if url_str.starts_with("bistrocode://auth") {
+        if !mark_seen_bistrocode_auth_link(url_str) {
+            log::debug!("⊘ Duplicate BistroCode auth deep link ignored from {source}");
+            return true;
+        }
+        log::info!("✓ BistroCode auth deep link detected from {source}");
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        if let Err(e) = app.emit("bistrocode-auth-link", url_str.to_string()) {
+            log::error!("✗ Failed to emit bistrocode-auth-link event: {e}");
+        }
+        return true;
     }
 
     let redacted_url = redact_url_for_log(url_str);
@@ -160,6 +179,34 @@ fn handle_deeplink_url(
         }
     }
 
+    true
+}
+
+fn mark_seen_bistrocode_auth_link(url_str: &str) -> bool {
+    let key = match url::Url::parse(url_str) {
+        Ok(url) => {
+            let code = url
+                .query_pairs()
+                .find(|(name, _)| name == "code")
+                .map(|(_, value)| value.into_owned())
+                .unwrap_or_else(|| url_str.to_string());
+            let state = url
+                .query_pairs()
+                .find(|(name, _)| name == "state")
+                .map(|(_, value)| value.into_owned())
+                .unwrap_or_default();
+            format!("{code}:{state}")
+        }
+        Err(_) => url_str.to_string(),
+    };
+
+    static SEEN_AUTH_LINKS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let seen_links = SEEN_AUTH_LINKS.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut guard = seen_links.lock().expect("bistrocode auth link set poisoned");
+    if guard.contains(&key) {
+        return false;
+    }
+    guard.insert(key);
     true
 }
 
@@ -757,7 +804,7 @@ pub fn run() {
                         log::debug!("  URL[{i}]: {}", redact_url_for_log(url_str));
 
                         if handle_deeplink_url(&app_handle, url_str, true, "on_open_url") {
-                            break; // Process only first ccswitch:// URL
+                            break; // Process only first supported deep link URL
                         }
                     }
                 }
@@ -769,7 +816,7 @@ pub fn run() {
 
             // 构建托盘
             let mut tray_builder = TrayIconBuilder::with_id(tray::TRAY_ID)
-                .tooltip("CC Switch") // 鼠标悬停提示
+                .tooltip("BistroCode Switch") // 鼠标悬停提示
                 .on_tray_icon_event(|tray, event| match event {
                     // 鼠标悬停/点击到托盘图标时，后台异步刷新用量缓存，
                     // 让用户下一次（或快速打开菜单的那一刻）看到较新的数字。
@@ -1108,6 +1155,8 @@ pub fn run() {
             commands::get_codex_oauth_models,
             commands::get_coding_plan_quota,
             commands::get_balance,
+            commands::get_bistrocode_account,
+            commands::get_bistrocode_pricing,
             // New MCP via config.json (SSOT)
             commands::get_mcp_config,
             commands::upsert_mcp_server_in_config,
@@ -1161,6 +1210,9 @@ pub fn run() {
             commands::merge_deeplink_config,
             commands::import_from_deeplink,
             commands::import_from_deeplink_unified,
+            commands::exchange_bistrocode_auth_code,
+            commands::get_bistrocode_dashboard_quota,
+            commands::ensure_bistrocode_default_tokens,
             update_tray_menu,
             // Environment variable management
             commands::check_env_conflicts,
@@ -1232,6 +1284,7 @@ pub fn run() {
             // Usage statistics
             commands::get_usage_summary,
             commands::get_usage_summary_by_app,
+            commands::get_bistrocode_usage_estimate,
             commands::get_usage_trends,
             commands::get_provider_stats,
             commands::get_model_stats,
@@ -1403,13 +1456,20 @@ pub fn run() {
                         }
                     }
                 }
-                // 处理通过自定义 URL 协议触发的打开事件（例如 ccswitch://...）
+                // 处理通过自定义 URL 协议触发的打开事件（例如 bistrocode://...）
                 RunEvent::Opened { urls } => {
                     if let Some(url) = urls.first() {
                         let url_str = url.to_string();
                         log::info!("RunEvent::Opened with URL: {url_str}");
 
-                        if url_str.starts_with("ccswitch://") {
+                        if url_str.starts_with("bistrocode://")
+                            || url_str.starts_with("ccswitch://")
+                        {
+                            if handle_deeplink_url(&app_handle, &url_str, true, "RunEvent::Opened")
+                            {
+                                return;
+                            }
+
                             if crate::lightweight::is_lightweight_mode() {
                                 if let Err(e) = crate::lightweight::exit_lightweight_mode(app_handle)
                                 {

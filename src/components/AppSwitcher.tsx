@@ -2,13 +2,14 @@ import type { AppId } from "@/lib/api";
 import type { VisibleApps } from "@/types";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { cn } from "@/lib/utils";
-import { Monitor, Terminal } from "lucide-react";
+import { Code2, Monitor, Terminal } from "lucide-react";
 
 const APP_BADGE_ICON: Partial<
   Record<AppId, { icon: typeof Terminal; offsetY?: number }>
 > = {
   claude: { icon: Terminal },
   "claude-desktop": { icon: Monitor, offsetY: 0.5 },
+  cursor: { icon: Code2 },
 };
 
 interface AppSwitcherProps {
@@ -21,6 +22,7 @@ interface AppSwitcherProps {
 const ALL_APPS: AppId[] = [
   "claude",
   "claude-desktop",
+  "cursor",
   "codex",
   "gemini",
   "opencode",
@@ -44,6 +46,7 @@ export function AppSwitcher({
   const appIconName: Record<AppId, string> = {
     claude: "claude",
     "claude-desktop": "claude",
+    cursor: "cursor",
     codex: "openai",
     gemini: "gemini",
     opencode: "opencode",
@@ -53,6 +56,7 @@ export function AppSwitcher({
   const appDisplayName: Record<AppId, string> = {
     claude: "Claude Code",
     "claude-desktop": "Claude Desktop",
+    cursor: "Cursor",
     codex: "Codex",
     gemini: "Gemini",
     opencode: "OpenCode",

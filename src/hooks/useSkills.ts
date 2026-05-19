@@ -14,6 +14,7 @@ import {
   type SkillsShSearchResult,
 } from "@/lib/api/skills";
 import type { AppId } from "@/lib/api/types";
+import type { NonCursorAppId } from "@/config/appConfig";
 import { mergeImportedSkills } from "@/hooks/useSkills.helpers";
 
 /**
@@ -74,7 +75,7 @@ export function useInstallSkill() {
       currentApp,
     }: {
       skill: DiscoverableSkill;
-      currentApp: AppId;
+      currentApp: Exclude<AppId, "cursor">;
     }) => skillsApi.installUnified(skill, currentApp),
     onSuccess: (installedSkill, _vars, _ctx) => {
       const { skill } = _vars;
@@ -155,7 +156,7 @@ export function useRestoreSkillBackup() {
       currentApp,
     }: {
       backupId: string;
-      currentApp: AppId;
+      currentApp: Exclude<AppId, "cursor">;
     }) => skillsApi.restoreBackup(backupId, currentApp),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["skills", "installed"] });
@@ -176,7 +177,7 @@ export function useToggleSkillApp() {
       enabled,
     }: {
       id: string;
-      app: AppId;
+      app: NonCursorAppId;
       enabled: boolean;
     }) => skillsApi.toggleApp(id, app, enabled),
     onSuccess: () => {
@@ -268,7 +269,7 @@ export function useInstallSkillsFromZip() {
       currentApp,
     }: {
       filePath: string;
-      currentApp: AppId;
+      currentApp: Exclude<AppId, "cursor">;
     }) => skillsApi.installFromZip(filePath, currentApp),
     onSuccess: (installedSkills) => {
       // 直接更新 installed 缓存

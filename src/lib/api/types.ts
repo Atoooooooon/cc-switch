@@ -2,6 +2,7 @@
 export type AppId =
   | "claude"
   | "claude-desktop"
+  | "cursor"
   | "codex"
   | "gemini"
   | "opencode"

@@ -72,22 +72,23 @@ const generatePresetTemplates = (
 
   [TEMPLATE_TYPES.NEW_API]: `({
   request: {
-    url: "{{baseUrl}}/api/user/self",
+    url: "{{baseUrl}}/api/usage/token/",
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer {{accessToken}}",
-      "User-Agent": "cc-switch/1.0",
-      "New-Api-User": "{{userId}}"
+      "Authorization": "Bearer {{apiKey}}",
+      "User-Agent": "BistroCode/1.0"
     },
   },
   extractor: function (response) {
-    if (response.success && response.data) {
+    if ((response.code === true || response.success === true) && response.data) {
+      const quotaPerUnit = 500000;
+      const unlimited = response.data.unlimited_quota === true;
       return {
-        planName: response.data.group || "${t("usageScript.defaultPlan")}",
-        remaining: response.data.quota / 500000,
-        used: response.data.used_quota / 500000,
-        total: (response.data.quota + response.data.used_quota) / 500000,
+        planName: response.data.name || "BistroCode",
+        remaining: unlimited ? -1 : response.data.total_available / quotaPerUnit,
+        used: response.data.total_used / quotaPerUnit,
+        total: unlimited ? -1 : response.data.total_granted / quotaPerUnit,
         unit: "USD",
       };
     }
@@ -209,6 +210,19 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
   const [script, setScript] = useState<UsageScript>(() => {
     const savedScript = provider.meta?.usage_script;
     if (savedScript) {
+      if (
+        savedScript.templateType === TEMPLATE_TYPES.NEW_API &&
+        !savedScript.apiKey &&
+        !savedScript.baseUrl
+      ) {
+        return {
+          ...savedScript,
+          code:
+            savedScript.code || PRESET_TEMPLATES[TEMPLATE_TYPES.NEW_API] || "",
+          apiKey: providerCredentials.apiKey,
+          baseUrl: providerCredentials.baseUrl,
+        };
+      }
       // 已有配置：如果是 coding_plan 但没有 codingPlanProvider，自动检测填充
       if (
         savedScript.templateType === TEMPLATE_TYPES.TOKEN_PLAN &&
@@ -299,7 +313,11 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       }
       // 向后兼容：根据字段推断模板类型
       // 检测 NEW_API 模板（有 accessToken 或 userId）
-      if (existingScript?.accessToken || existingScript?.userId) {
+      if (
+        existingScript?.templateType === TEMPLATE_TYPES.NEW_API ||
+        existingScript?.accessToken ||
+        existingScript?.userId
+      ) {
         return TEMPLATE_TYPES.NEW_API;
       }
       // 检测 GENERAL 模板（有 apiKey 或 baseUrl）
@@ -571,6 +589,8 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           ...script,
           code: preset,
           apiKey: undefined,
+          accessToken: undefined,
+          userId: undefined,
         });
       } else if (presetName === TEMPLATE_TYPES.GITHUB_COPILOT) {
         // Copilot 模板不需要脚本和凭证，使用专用 API
@@ -943,34 +963,32 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           onChange={(e) =>
                             setScript({ ...script, baseUrl: e.target.value })
                           }
-                          placeholder="https://api.newapi.com"
+                          placeholder="https://bistrocode.online"
                           autoComplete="off"
                           className="border-white/10"
                         />
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="usage-access-token">
-                          {t("usageScript.accessToken")}
+                        <Label htmlFor="usage-newapi-api-key">
+                          {t("usageScript.apiKey")}
                         </Label>
                         <div className="relative">
                           <Input
-                            id="usage-access-token"
+                            id="usage-newapi-api-key"
                             type={showAccessToken ? "text" : "password"}
-                            value={script.accessToken || ""}
+                            value={script.apiKey || ""}
                             onChange={(e) =>
                               setScript({
                                 ...script,
-                                accessToken: e.target.value,
+                                apiKey: e.target.value,
                               })
                             }
-                            placeholder={t(
-                              "usageScript.accessTokenPlaceholder",
-                            )}
+                            placeholder={t("usageScript.apiKeyPlaceholder")}
                             autoComplete="off"
                             className="border-white/10"
                           />
-                          {script.accessToken && (
+                          {script.apiKey && (
                             <button
                               type="button"
                               onClick={() =>
@@ -991,23 +1009,6 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                             </button>
                           )}
                         </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="usage-user-id">
-                          {t("usageScript.userId")}
-                        </Label>
-                        <Input
-                          id="usage-user-id"
-                          type="text"
-                          value={script.userId || ""}
-                          onChange={(e) =>
-                            setScript({ ...script, userId: e.target.value })
-                          }
-                          placeholder={t("usageScript.userIdPlaceholder")}
-                          autoComplete="off"
-                          className="border-white/10"
-                        />
                       </div>
                     </>
                   )}

@@ -8,6 +8,7 @@ use crate::provider::{UsageData, UsageResult, UsageScript};
 use crate::settings;
 use crate::store::AppState;
 use crate::usage_script;
+use regex::Regex;
 
 /// Execute usage script and format result (private helper method)
 pub(crate) async fn execute_and_format_usage_result(
@@ -91,6 +92,10 @@ fn extract_api_key_from_provider(provider: &crate::provider::Provider) -> Option
             .or_else(|| env.get("GOOGLE_API_KEY"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
+    } else if let Some(auth) = provider.settings_config.get("auth") {
+        auth.get("OPENAI_API_KEY")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     } else {
         None
     }
@@ -104,9 +109,30 @@ fn extract_base_url_from_provider(provider: &crate::provider::Provider) -> Optio
             .or_else(|| env.get("GOOGLE_GEMINI_BASE_URL"))
             .and_then(|v| v.as_str())
             .map(|s| s.trim_end_matches('/').to_string())
+    } else if let Some(config_toml) = provider
+        .settings_config
+        .get("config")
+        .and_then(|v| v.as_str())
+    {
+        Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#)
+            .ok()
+            .and_then(|re| {
+                re.captures(config_toml)
+                    .and_then(|caps| caps.get(1))
+                    .map(|m| m.as_str().trim_end_matches("/v1").to_string())
+            })
     } else {
         None
     }
+}
+
+async fn query_native_new_api_usage(
+    base_url: &str,
+    api_key: &str,
+) -> Result<UsageResult, AppError> {
+    crate::services::balance::get_balance(base_url, api_key)
+        .await
+        .map_err(AppError::Message)
 }
 
 /// Query provider usage (using saved script configuration)
@@ -170,6 +196,10 @@ pub async fn query_usage(
         )
     };
 
+    if template_type.as_deref() == Some("newapi") && script_code.trim().is_empty() {
+        return query_native_new_api_usage(&base_url, &api_key).await;
+    }
+
     execute_and_format_usage_result(
         &script_code,
         &api_key,
@@ -196,6 +226,10 @@ pub async fn test_usage_script(
     user_id: Option<&str>,
     template_type: Option<&str>,
 ) -> Result<UsageResult, AppError> {
+    if template_type == Some("newapi") && script_code.trim().is_empty() {
+        return query_native_new_api_usage(base_url.unwrap_or(""), api_key.unwrap_or("")).await;
+    }
+
     // Use provided credential parameters directly for testing
     execute_and_format_usage_result(
         script_code,

@@ -36,6 +36,28 @@ export function UniversalProviderFormModal({
   const { t } = useTranslation();
   const isEditMode = !!editingProvider;
 
+  const normalizeBaseUrl = useCallback((value: string) => {
+    return value.trim().replace(/\/+$/, "");
+  }, []);
+
+  const ensureOpenAIBaseUrl = useCallback(
+    (value: string) => {
+      const trimmed = normalizeBaseUrl(value);
+      if (!trimmed) return "";
+
+      try {
+        const parsed = new URL(trimmed);
+        const path = parsed.pathname.replace(/\/+$/, "");
+        if (path.endsWith("/v1")) return trimmed;
+        if (!path || path === "/") return `${trimmed}/v1`;
+        return trimmed;
+      } catch {
+        return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+      }
+    },
+    [normalizeBaseUrl],
+  );
+
   // 表单状态
   const [selectedPreset, setSelectedPreset] =
     useState<UniversalProviderPreset | null>(null);
@@ -83,7 +105,11 @@ export function UniversalProviderFormModal({
       const defaultPreset = initialPreset || universalProviderPresets[0];
       setSelectedPreset(defaultPreset);
       setName(defaultPreset.name);
-      setBaseUrl("");
+      setBaseUrl(
+        defaultPreset.providerType === "bistrocode"
+          ? "https://bistrocode.online"
+          : "",
+      );
       setApiKey("");
       setWebsiteUrl(defaultPreset.websiteUrl || "");
       setNotes("");
@@ -100,10 +126,16 @@ export function UniversalProviderFormModal({
       setSelectedPreset(preset);
       if (!isEditMode) {
         setName(preset.name);
+        setBaseUrl(
+          preset.providerType === "bistrocode"
+            ? "https://bistrocode.online"
+            : "",
+        );
         setClaudeEnabled(preset.defaultApps.claude);
         setCodexEnabled(preset.defaultApps.codex);
         setGeminiEnabled(preset.defaultApps.gemini);
         setModels(JSON.parse(JSON.stringify(preset.defaultModels)));
+        setWebsiteUrl(preset.websiteUrl || "");
       }
     },
     [isEditMode],
@@ -147,10 +179,7 @@ export function UniversalProviderFormModal({
     if (!codexEnabled) return null;
     const model = models.codex?.model || "gpt-5.4";
     const reasoningEffort = models.codex?.reasoningEffort || "high";
-    // 确保 base_url 以 /v1 结尾（Codex 使用 OpenAI 兼容 API）
-    const codexBaseUrl = baseUrl.endsWith("/v1")
-      ? baseUrl
-      : `${baseUrl.replace(/\/+$/, "")}/v1`;
+    const codexBaseUrl = ensureOpenAIBaseUrl(baseUrl);
     const configToml = `model_provider = "newapi"
 model = "${model}"
 model_reasoning_effort = "${reasoningEffort}"
@@ -167,7 +196,7 @@ requires_openai_auth = true`;
       },
       config: configToml,
     };
-  }, [codexEnabled, baseUrl, apiKey, models.codex]);
+  }, [codexEnabled, baseUrl, apiKey, models.codex, ensureOpenAIBaseUrl]);
 
   // 计算 Gemini 配置 JSON 预览
   const geminiConfigJson = useMemo(() => {
@@ -192,7 +221,7 @@ requires_openai_auth = true`;
       ? {
           ...editingProvider,
           name: name.trim(),
-          baseUrl: baseUrl.trim(),
+          baseUrl: normalizeBaseUrl(baseUrl),
           apiKey: apiKey.trim(),
           websiteUrl: websiteUrl.trim() || undefined,
           notes: notes.trim() || undefined,
@@ -206,7 +235,7 @@ requires_openai_auth = true`;
       : createUniversalProviderFromPreset(
           selectedPreset || universalProviderPresets[0],
           crypto.randomUUID(),
-          baseUrl.trim(),
+          normalizeBaseUrl(baseUrl),
           apiKey.trim(),
           name.trim(),
         );
@@ -237,6 +266,7 @@ requires_openai_auth = true`;
     geminiEnabled,
     models,
     selectedPreset,
+    normalizeBaseUrl,
     onSave,
     onClose,
   ]);
@@ -251,7 +281,7 @@ requires_openai_auth = true`;
       ? {
           ...editingProvider,
           name: name.trim(),
-          baseUrl: baseUrl.trim(),
+          baseUrl: normalizeBaseUrl(baseUrl),
           apiKey: apiKey.trim(),
           websiteUrl: websiteUrl.trim() || undefined,
           notes: notes.trim() || undefined,
@@ -265,7 +295,7 @@ requires_openai_auth = true`;
       : createUniversalProviderFromPreset(
           selectedPreset || universalProviderPresets[0],
           crypto.randomUUID(),
-          baseUrl.trim(),
+          normalizeBaseUrl(baseUrl),
           apiKey.trim(),
           name.trim(),
         );
@@ -295,6 +325,7 @@ requires_openai_auth = true`;
     geminiEnabled,
     models,
     selectedPreset,
+    normalizeBaseUrl,
   ]);
 
   // 打开保存并同步确认弹窗

@@ -32,6 +32,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { settingsApi, skillsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
+import type { NonCursorAppId } from "@/config/appConfig";
 import { AppCountBar } from "@/components/common/AppCountBar";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
 import { ListItemRow } from "@/components/common/ListItemRow";
@@ -69,6 +70,8 @@ const UnifiedSkillsPanel = React.forwardRef<
   UnifiedSkillsPanelProps
 >(({ onOpenDiscovery, currentApp }, ref) => {
   const { t } = useTranslation();
+  const skillCurrentApp: Exclude<AppId, "cursor"> =
+    currentApp === "cursor" ? "claude" : currentApp;
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -131,7 +134,11 @@ const UnifiedSkillsPanel = React.forwardRef<
     return counts;
   }, [skills]);
 
-  const handleToggleApp = async (id: string, app: AppId, enabled: boolean) => {
+  const handleToggleApp = async (
+    id: string,
+    app: NonCursorAppId,
+    enabled: boolean,
+  ) => {
     try {
       await toggleAppMutation.mutateAsync({ id, app, enabled });
     } catch (error) {
@@ -202,7 +209,7 @@ const UnifiedSkillsPanel = React.forwardRef<
 
       const installed = await installFromZipMutation.mutateAsync({
         filePath,
-        currentApp,
+        currentApp: skillCurrentApp,
       });
 
       if (installed.length === 0) {
@@ -289,7 +296,7 @@ const UnifiedSkillsPanel = React.forwardRef<
     try {
       const restored = await restoreBackupMutation.mutateAsync({
         backupId,
-        currentApp,
+        currentApp: skillCurrentApp,
       });
       setRestoreDialogOpen(false);
       toast.success(
@@ -481,7 +488,7 @@ interface InstalledSkillListItemProps {
   skill: InstalledSkill;
   hasUpdate?: boolean;
   isUpdating?: boolean;
-  onToggleApp: (id: string, app: AppId, enabled: boolean) => void;
+  onToggleApp: (id: string, app: NonCursorAppId, enabled: boolean) => void;
   onUninstall: () => void;
   onUpdate?: () => void;
   isLast?: boolean;

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { mcpApi } from "@/lib/api/mcp";
 import type { McpServer } from "@/types";
-import type { AppId } from "@/lib/api/types";
+import type { NonCursorAppId } from "@/config/appConfig";
 
 /**
  * 查询所有 MCP 服务器（统一管理）
@@ -38,7 +38,7 @@ export function useToggleMcpApp() {
       enabled,
     }: {
       serverId: string;
-      app: AppId;
+      app: NonCursorAppId;
       enabled: boolean;
     }) => mcpApi.toggleApp(serverId, app, enabled),
     onSuccess: () => {

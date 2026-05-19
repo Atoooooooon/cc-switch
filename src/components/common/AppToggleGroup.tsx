@@ -4,19 +4,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { AppId } from "@/lib/api/types";
 import { APP_IDS, APP_ICON_MAP } from "@/config/appConfig";
+import type { NonCursorAppId } from "@/config/appConfig";
 
 interface AppToggleGroupProps {
-  apps: Partial<Record<AppId, boolean>>;
-  onToggle: (app: AppId, enabled: boolean) => void;
-  appIds?: AppId[];
+  apps: Partial<Record<NonCursorAppId, boolean>>;
+  onToggle: (app: NonCursorAppId, enabled: boolean) => void;
+  appIds?: NonCursorAppId[];
 }
 
 export const AppToggleGroup: React.FC<AppToggleGroupProps> = ({
   apps,
   onToggle,
-  appIds = APP_IDS,
+  appIds = APP_IDS.filter((app) => app !== "cursor"),
 }) => {
   return (
     <div className="flex items-center gap-1.5 flex-shrink-0">

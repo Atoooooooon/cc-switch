@@ -1,357 +1,332 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
-import { useUsageSummaryByApp } from "@/lib/query/usage";
-import { cn } from "@/lib/utils";
 import {
   Activity,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Database,
-  Info,
+  BadgeDollarSign,
+  ExternalLink,
   Loader2,
-  Sparkles,
-  Zap,
+  PiggyBank,
+  RefreshCw,
+  TrendingUp,
+  Wallet,
 } from "lucide-react";
-import {
-  fmtUsd,
-  formatTokensShort,
-  getResolvedLang,
-  parseFiniteNumber,
-} from "./format";
-import {
-  CACHE_INCLUSIVE_APP_TYPES,
-  type AppType,
-  type UsageRangeSelection,
-  type UsageSummary,
-  type UsageSummaryByApp,
-} from "@/types/usage";
+import { useQueryClient } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useBistroCodeAuth } from "@/contexts/BistroCodeAuthContext";
+import { dashboardKeys, useCloudUserQuotaDates } from "@/lib/query/dashboard";
+import { usageKeys, useBistroCodeUsageEstimate } from "@/lib/query/usage";
+import { settingsApi } from "@/lib/api";
+import type { QuotaDataItem } from "@/lib/api/dashboard";
+import type { UsageRangeSelection } from "@/types/usage";
+import { fmtInt, fmtUsd } from "./format";
 
 interface UsageHeroProps {
   range: UsageRangeSelection;
-  appType?: string;
-  refreshIntervalMs: number;
+  refreshIntervalMs?: number;
 }
 
-interface TitleTheme {
-  /** Foreground color for the icon glyph (text-* class). */
-  accent: string;
-  /** Background tint for the icon square (bg-* class). */
-  iconBg: string;
+const SPARKLINE_BUCKETS = 12;
+
+type SparklineKey = "balance" | "usage" | "requests";
+
+function getBucketIndex(
+  timestamp: number,
+  start: number,
+  end: number,
+  bucketCount: number,
+) {
+  if (end <= start) return 0;
+  const ratio = (timestamp - start) / (end - start);
+  return Math.min(bucketCount - 1, Math.max(0, Math.floor(ratio * bucketCount)));
 }
 
-const TITLE_THEMES: Record<AppType | "all", TitleTheme> = {
-  all: { accent: "text-primary", iconBg: "bg-primary/10" },
-  claude: {
-    accent: "text-amber-600 dark:text-amber-400",
-    iconBg: "bg-amber-500/10",
-  },
-  codex: {
-    accent: "text-emerald-600 dark:text-emerald-400",
-    iconBg: "bg-emerald-500/10",
-  },
-  gemini: {
-    accent: "text-sky-600 dark:text-sky-400",
-    iconBg: "bg-sky-500/10",
-  },
-};
+function buildSparklines(
+  data: QuotaDataItem[],
+  currentBalance: number,
+): Record<SparklineKey, number[]> {
+  const usage = Array.from({ length: SPARKLINE_BUCKETS }, () => 0);
+  const requests = Array.from({ length: SPARKLINE_BUCKETS }, () => 0);
+  const timestamps = data
+    .map((item) => Number(item.created_at) || 0)
+    .filter((value) => value > 0);
+  const start = timestamps.length ? Math.min(...timestamps) : 0;
+  const end = timestamps.length ? Math.max(...timestamps) : 1;
 
-/**
- * Combine per-app summaries into a single rolled-up summary.
- *
- * The backend's per-app rows already use fresh-input semantics (cache-inclusive
- * providers have been normalized in SQL), so plain addition is correct here.
- * `cacheHitRate` and `successRate` must be re-derived from the summed counts
- * rather than averaged across rows.
- */
-function aggregateSummaries(items: UsageSummary[]): UsageSummary {
-  let totalRequests = 0;
-  let successCount = 0;
-  let totalCostNum = 0;
-  let input = 0;
-  let output = 0;
-  let cacheCreation = 0;
-  let cacheRead = 0;
-
-  for (const s of items) {
-    totalRequests += s.totalRequests;
-    successCount += Math.round((s.totalRequests * s.successRate) / 100);
-    totalCostNum += parseFiniteNumber(s.totalCost) ?? 0;
-    input += s.totalInputTokens;
-    output += s.totalOutputTokens;
-    cacheCreation += s.totalCacheCreationTokens;
-    cacheRead += s.totalCacheReadTokens;
+  for (const item of data) {
+    const timestamp = Number(item.created_at) || start;
+    const index = getBucketIndex(timestamp, start, end, SPARKLINE_BUCKETS);
+    usage[index] += Number(item.quota) || 0;
+    requests[index] += Number(item.count) || 0;
   }
 
-  const cacheableInput = input + cacheCreation + cacheRead;
+  let balance = currentBalance;
+  const balanceTrend = Array.from({ length: SPARKLINE_BUCKETS }, () => 0);
+  for (let index = SPARKLINE_BUCKETS - 1; index >= 0; index--) {
+    balanceTrend[index] = Math.max(0, balance);
+    balance += usage[index];
+  }
+
   return {
-    totalRequests,
-    totalCost: totalCostNum.toFixed(6),
-    totalInputTokens: input,
-    totalOutputTokens: output,
-    totalCacheCreationTokens: cacheCreation,
-    totalCacheReadTokens: cacheRead,
-    successRate: totalRequests > 0 ? (successCount / totalRequests) * 100 : 0,
-    realTotalTokens: input + output + cacheCreation + cacheRead,
-    cacheHitRate: cacheableInput > 0 ? cacheRead / cacheableInput : 0,
+    balance: balanceTrend,
+    usage,
+    requests,
   };
 }
 
-function pickSummary(
-  apps: UsageSummaryByApp[],
-  appType: string | undefined,
-): UsageSummary | undefined {
-  if (apps.length === 0) return undefined;
-  if (appType) {
-    return apps.find((a) => a.appType === appType)?.summary;
-  }
-  return aggregateSummaries(apps.map((a) => a.summary));
+function Sparkline({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+
+  return (
+    <div className="mt-3 flex h-7 items-end gap-1">
+      {values.map((value, index) => (
+        <span
+          key={index}
+          className="flex-1 rounded-t-sm bg-primary/65"
+          style={{ height: `${Math.max(10, (value / max) * 100)}%` }}
+        />
+      ))}
+    </div>
+  );
 }
 
-type CacheWriteState = "ok" | "partial" | "na";
-
-/**
- * Anthropic-style protocols report cache creation; OpenAI-style protocols
- * (Codex/Gemini) do not — so a mix shows the number with a caveat, all-OpenAI
- * shows N/A. `appTypes` is the set actually contributing to the displayed
- * summary (a single app, or every app that participated in "all").
- */
-function deriveCacheWriteState(appTypes: string[]): CacheWriteState {
-  if (appTypes.length === 0) return "ok";
-  const inclusive = appTypes.filter((t) =>
-    CACHE_INCLUSIVE_APP_TYPES.has(t),
-  ).length;
-  if (inclusive === appTypes.length) return "na";
-  if (inclusive === 0) return "ok";
-  return "partial";
+function MiniCard({
+  label,
+  value,
+  description,
+  values,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  description: string;
+  values: number[];
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/60 p-3">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="size-3.5" />
+        <span>{label}</span>
+      </div>
+      <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
+        {value}
+      </div>
+      <div className="mt-0.5 text-xs text-muted-foreground">
+        {description}
+      </div>
+      <Sparkline values={values} />
+    </div>
+  );
 }
 
 export function UsageHero({
   range,
-  appType,
-  refreshIntervalMs,
+  refreshIntervalMs = 0,
 }: UsageHeroProps) {
-  const { t, i18n } = useTranslation();
-  const lang = getResolvedLang(i18n);
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { account, isAuthenticated, accessToken, userId } = useBistroCodeAuth();
 
-  const { data, isLoading } = useUsageSummaryByApp(range, {
+  const { data, isLoading, error } = useCloudUserQuotaDates(range, {
+    accessToken,
+    userId,
+    enabled: isAuthenticated,
     refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
   });
+  const {
+    data: estimate,
+    isLoading: estimateLoading,
+    error: estimateError,
+  } = useBistroCodeUsageEstimate(range, {
+    refetchInterval: false,
+  });
 
-  // No client-side filtering: Hero's totals must match the Trend/Logs/Stats
-  // below, which all go through the backend's full set of app_types. The
-  // KNOWN_APP_TYPES list only governs which filter buttons appear, not which
-  // rows participate in the "all" aggregate.
-  const allApps = data ?? [];
-  const summary = pickSummary(allApps, appType);
-
-  const titleTheme =
-    TITLE_THEMES[(appType ?? "all") as keyof typeof TITLE_THEMES] ??
-    TITLE_THEMES.all;
-  const appLabel =
-    appType && appType in TITLE_THEMES ? t(`usage.appFilter.${appType}`) : null;
-
-  const cacheWriteState = deriveCacheWriteState(
-    appType ? [appType] : allApps.map((a) => a.appType),
-  );
-
-  const input = summary?.totalInputTokens ?? 0;
-  const output = summary?.totalOutputTokens ?? 0;
-  const cacheWrite = summary?.totalCacheCreationTokens ?? 0;
-  const cacheRead = summary?.totalCacheReadTokens ?? 0;
-  const realTotal = summary?.realTotalTokens ?? 0;
-  const hitRate = summary?.cacheHitRate ?? 0;
-  const totalCost = parseFiniteNumber(summary?.totalCost);
-  const requests = summary?.totalRequests ?? 0;
-
-  const cacheWriteDisplay = {
-    value:
-      cacheWriteState === "na" ? "N/A" : formatTokensShort(cacheWrite, lang),
-    muted: cacheWriteState === "na",
-    tooltip:
-      cacheWriteState === "na"
-        ? t(
-            "usage.cacheWriteNotReported",
-            "OpenAI 协议不区分缓存写入，仅上报缓存命中",
-          )
-        : cacheWriteState === "partial"
-          ? t(
-              "usage.cacheWritePartial",
-              "部分协议（如 OpenAI）不上报缓存写入，数值可能偏低",
-            )
-          : undefined,
+  const refreshUsage = () => {
+    queryClient.invalidateQueries({ queryKey: usageKeys.all });
+    queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
   };
+
+  const openDashboard = async () => {
+    try {
+      await settingsApi.openExternal("https://bistrocode.online/console");
+    } catch {
+      window.open("https://bistrocode.online/console", "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const values = useMemo(() => {
+    const rows = data ?? [];
+    const currentBalance = Number(account?.quota ?? 0);
+    const rangeUsedQuota = rows.reduce(
+      (sum, item) => sum + (Number(item.quota) || 0),
+      0,
+    );
+    const rangeRequests = rows.reduce(
+      (sum, item) => sum + (Number(item.count) || 0),
+      0,
+    );
+    const rangeTokens = rows.reduce(
+      (sum, item) => sum + (Number(item.token_used) || 0),
+      0,
+    );
+
+    return {
+      currentBalance,
+      usedQuota: Number(account?.usedQuota ?? rangeUsedQuota),
+      requestCount: Number(account?.requestCount ?? rangeRequests),
+      rangeUsedQuota,
+      rangeRequests,
+      rangeTokens,
+      officialCost: Number(estimate?.officialCostUsd ?? 0),
+      bistrocodeCost: Number(estimate?.bistrocodeCostUsd ?? 0),
+      estimatedSavings: Number(estimate?.estimatedSavingsUsd ?? 0),
+      sparklines: buildSparklines(rows, currentBalance),
+    };
+  }, [
+    account?.quota,
+    account?.requestCount,
+    account?.usedQuota,
+    data,
+    estimate?.bistrocodeCostUsd,
+    estimate?.estimatedSavingsUsd,
+    estimate?.officialCostUsd,
+  ]);
+
+  if (!isAuthenticated) {
+    return (
+      <Card className="border border-border/50 bg-card/40 backdrop-blur-sm">
+        <CardContent className="flex min-h-[200px] items-center justify-center">
+          <div className="text-sm text-muted-foreground">
+            请先连接 BistroCode 平台账号
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
       <Card className="border border-border/50 bg-card/40 backdrop-blur-sm">
-        <CardContent className="flex items-center justify-center min-h-[200px]">
+        <CardContent className="flex min-h-[200px] items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
         </CardContent>
       </Card>
     );
   }
 
-  const hitPercent = Math.max(0, Math.min(100, hitRate * 100));
-  const hitPercentLabel = hitPercent.toFixed(hitPercent >= 99.95 ? 0 : 1);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
+      className="grid gap-4"
     >
-      <Card className="relative overflow-hidden border border-border/50 bg-gradient-to-br from-primary/5 via-card/50 to-background/50 backdrop-blur-xl shadow-sm">
-        <CardContent className="p-6 md:p-8">
-          {/* Header: title + cost */}
-          <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-            <div className="flex items-center gap-2">
-              <div className={cn("p-2 rounded-lg", titleTheme.iconBg)}>
-                <Zap className={cn("h-4 w-4", titleTheme.accent)} />
-              </div>
-              <span className="text-sm font-medium text-muted-foreground">
-                {appLabel && (
-                  <>
-                    <span className={cn("font-semibold", titleTheme.accent)}>
-                      {appLabel}
-                    </span>
-                    <span className="mx-1.5 text-muted-foreground/40">·</span>
-                  </>
-                )}
-                {t("usage.realTotal", "真实消耗 Tokens")}
-              </span>
+      <Card className="overflow-hidden border border-border/50 bg-card/60">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-base font-semibold">
+                今日使用概览
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                展示今天的真实用量和平台价格优惠。
+              </p>
             </div>
-            <div className="flex items-center gap-4 text-right">
-              <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">
-                  {t("usage.totalRequests")}
-                </span>
-                <span className="text-sm font-semibold flex items-center gap-1 justify-end">
-                  <Activity className="h-3.5 w-3.5 text-blue-500" />
-                  {requests.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">
-                  {t("usage.totalCost")}
-                </span>
-                <span className="text-sm font-semibold text-green-500">
-                  {totalCost == null ? "--" : fmtUsd(totalCost, 4)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Hero number */}
-          <div className="flex flex-col items-start mb-6">
-            <div
-              className="text-4xl md:text-5xl font-bold tracking-tight tabular-nums leading-tight"
-              title={realTotal.toLocaleString()}
-            >
-              {realTotal.toLocaleString()}
-            </div>
-            <div className="text-sm text-muted-foreground mt-1">
-              ≈ {formatTokensShort(realTotal, lang, 2)}{" "}
-              {t("usage.tokensSuffix", "tokens")}
+            <div className="flex flex-wrap items-center gap-2">
+              {account ? (
+                <div className="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs text-muted-foreground">
+                  {account.displayName || account.username || `用户 ${account.id}`}
+                  <span className="ml-1 text-muted-foreground">ID {account.id}</span>
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs text-muted-foreground"
+                title={t("common.refresh", "刷新")}
+                onClick={refreshUsage}
+              >
+                <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                刷新
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs text-muted-foreground"
+                title="打开云端数据看板"
+                onClick={() => void openDashboard()}
+              >
+                <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                更多
+              </Button>
             </div>
           </div>
 
-          {/* Breakdown row: 4 mini stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <MiniStat
-              icon={<ArrowDownToLine className="h-3.5 w-3.5" />}
-              label={t("usage.freshInput", "新增输入")}
-              value={formatTokensShort(input, lang)}
-              accent="text-blue-500"
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <MiniCard
+              label="当前余额"
+              value={fmtInt(values.currentBalance)}
+              description="云端账户当前剩余额度"
+              values={values.sparklines.balance}
+              icon={Wallet}
             />
-            <MiniStat
-              icon={<ArrowUpFromLine className="h-3.5 w-3.5" />}
-              label={t("usage.output")}
-              value={formatTokensShort(output, lang)}
-              accent="text-purple-500"
+            <MiniCard
+              label="今日用量"
+              value={fmtInt(values.rangeUsedQuota)}
+              description={`累计已用 ${fmtInt(values.usedQuota)} 额度`}
+              values={values.sparklines.usage}
+              icon={TrendingUp}
             />
-            <MiniStat
-              icon={<Database className="h-3.5 w-3.5" />}
-              label={t("usage.cacheWrite", "缓存写入")}
-              value={cacheWriteDisplay.value}
-              accent="text-amber-500"
-              muted={cacheWriteDisplay.muted}
-              tooltip={cacheWriteDisplay.tooltip}
-            />
-            <MiniStat
-              icon={<Sparkles className="h-3.5 w-3.5" />}
-              label={t("usage.cacheRead", "缓存命中")}
-              value={formatTokensShort(cacheRead, lang)}
-              accent="text-emerald-500"
+            <MiniCard
+              label="请求次数"
+              value={fmtInt(values.requestCount)}
+              description={`当前范围 ${fmtInt(values.rangeRequests)} 次 / ${fmtInt(values.rangeTokens)} tokens`}
+              values={values.sparklines.requests}
+              icon={Activity}
             />
           </div>
 
-          {/* Hit rate progress */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                {t("usage.cacheHitRate", "缓存命中率")}
-              </span>
-              <span className="font-semibold text-emerald-500 tabular-nums">
-                {hitPercentLabel}%
-              </span>
-            </div>
-            <div className="relative h-2 rounded-full bg-muted/50 overflow-hidden">
-              <motion.div
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-500/80 to-emerald-400 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${hitPercent}%` }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-              />
-            </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <MiniCard
+              label="官方价格"
+              value={estimateLoading ? "计算中" : fmtUsd(values.officialCost, 4)}
+              description="按当前 token 用量套用官方模型价格"
+              values={[values.officialCost]}
+              icon={BadgeDollarSign}
+            />
+            <MiniCard
+              label="BistroCode 价格"
+              value={estimateLoading ? "计算中" : fmtUsd(values.bistrocodeCost, 4)}
+              description="按 BistroCode 云端价格折算"
+              values={[values.bistrocodeCost]}
+              icon={Wallet}
+            />
+            <MiniCard
+              label="已优惠"
+              value={estimateLoading ? "计算中" : fmtUsd(values.estimatedSavings, 4)}
+              description={`已匹配 ${fmtInt(estimate?.pricedRequests ?? 0)} 次请求`}
+              values={[values.estimatedSavings]}
+              icon={PiggyBank}
+            />
           </div>
+
+          {error ? (
+            <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              {String(error)}
+            </div>
+          ) : null}
+          {estimateError ? (
+            <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              {String(estimateError)}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </motion.div>
-  );
-}
-
-interface MiniStatProps {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  accent: string;
-  /** Optional hover tooltip — used to flag protocol-level caveats. */
-  tooltip?: string;
-  /** Visually de-emphasize the value (e.g. for "N/A" cases). */
-  muted?: boolean;
-}
-
-function MiniStat({
-  icon,
-  label,
-  value,
-  accent,
-  tooltip,
-  muted,
-}: MiniStatProps) {
-  return (
-    <div
-      className="flex flex-col gap-1 rounded-lg border border-border/40 bg-background/40 px-3 py-2.5"
-      title={tooltip}
-    >
-      <div
-        className={`flex items-center gap-1.5 text-xs text-muted-foreground ${accent}`}
-      >
-        {icon}
-        <span className="text-foreground/70">{label}</span>
-        {tooltip && (
-          <Info className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-        )}
-      </div>
-      <div
-        className={cn(
-          "text-base font-semibold tabular-nums",
-          muted && "text-muted-foreground/70",
-        )}
-      >
-        {value}
-      </div>
-    </div>
   );
 }

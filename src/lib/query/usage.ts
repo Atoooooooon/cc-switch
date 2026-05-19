@@ -3,11 +3,12 @@ import { usageApi } from "@/lib/api/usage";
 import { resolveUsageRange } from "@/lib/usageRange";
 import type { LogFilters, UsageRangeSelection } from "@/types/usage";
 
-const DEFAULT_REFETCH_INTERVAL_MS = 30000;
+const DEFAULT_REFETCH_INTERVAL_MS = false;
 
 type UsageQueryOptions = {
   refetchInterval?: number | false;
   refetchIntervalInBackground?: boolean;
+  enabled?: boolean;
 };
 
 type RequestLogsQueryArgs = {
@@ -115,6 +116,18 @@ export const usageKeys = {
     ] as const,
   detail: (requestId: string) =>
     [...usageKeys.all, "detail", requestId] as const,
+  bistrocodeEstimate: (
+    preset: UsageRangeSelection["preset"],
+    customStartDate: number | undefined,
+    customEndDate: number | undefined,
+  ) =>
+    [
+      ...usageKeys.all,
+      "bistrocode-estimate",
+      preset,
+      customStartDate ?? 0,
+      customEndDate ?? 0,
+    ] as const,
   pricing: () => [...usageKeys.all, "pricing"] as const,
   limits: (providerId: string, appType: string) =>
     [...usageKeys.all, "limits", providerId, appType] as const,
@@ -263,6 +276,26 @@ export function useRequestDetail(requestId: string) {
     queryKey: usageKeys.detail(requestId),
     queryFn: () => usageApi.getRequestDetail(requestId),
     enabled: !!requestId,
+  });
+}
+
+export function useBistroCodeUsageEstimate(
+  range: UsageRangeSelection,
+  options?: UsageQueryOptions,
+) {
+  return useQuery({
+    queryKey: usageKeys.bistrocodeEstimate(
+      range.preset,
+      range.customStartDate,
+      range.customEndDate,
+    ),
+    queryFn: () => {
+      const { startDate, endDate } = resolveUsageRange(range);
+      return usageApi.getBistroCodeUsageEstimate(startDate, endDate);
+    },
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
   });
 }
 

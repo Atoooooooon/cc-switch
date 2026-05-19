@@ -38,6 +38,7 @@ interface ProviderPresetSelectorProps {
   onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
   onManageUniversalProviders?: () => void;
   category?: ProviderCategory; // 当前选中的分类
+  showCustomPreset?: boolean;
 }
 
 export function ProviderPresetSelector({
@@ -48,6 +49,7 @@ export function ProviderPresetSelector({
   onUniversalPresetSelect,
   onManageUniversalProviders,
   category,
+  showCustomPreset = true,
 }: ProviderPresetSelectorProps) {
   const { t } = useTranslation();
 
@@ -87,7 +89,11 @@ export function ProviderPresetSelector({
 
   const renderPresetIcon = (preset: AnyPreset) => {
     const iconType = preset.theme?.icon;
-    if (!iconType) return null;
+    if (!iconType) {
+      return preset.icon ? (
+        <ProviderIcon icon={preset.icon} name={preset.name} size={14} />
+      ) : null;
+    }
 
     switch (iconType) {
       case "claude":
@@ -132,17 +138,19 @@ export function ProviderPresetSelector({
     <div className="space-y-3">
       <FormLabel>{t("providerPreset.label")}</FormLabel>
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => onPresetChange("custom")}
-          className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            selectedPresetId === "custom"
-              ? "bg-blue-500 text-white dark:bg-blue-600"
-              : "bg-accent text-muted-foreground hover:bg-accent/80"
-          }`}
-        >
-          {t("providerPreset.custom")}
-        </button>
+        {showCustomPreset && (
+          <button
+            type="button"
+            onClick={() => onPresetChange("custom")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedPresetId === "custom"
+                ? "bg-blue-500 text-white dark:bg-blue-600"
+                : "bg-accent text-muted-foreground hover:bg-accent/80"
+            }`}
+          >
+            {t("providerPreset.custom")}
+          </button>
+        )}
 
         {presetEntries.map((entry) => {
           const isSelected = selectedPresetId === entry.id;

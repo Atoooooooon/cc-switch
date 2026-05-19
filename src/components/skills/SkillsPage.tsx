@@ -73,7 +73,8 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     >([]);
 
     // currentApp 用于安装时的默认应用
-    const currentApp = initialApp;
+    const currentApp: Exclude<AppId, "cursor"> =
+      initialApp === "cursor" ? "claude" : initialApp;
 
     // Queries
     const {

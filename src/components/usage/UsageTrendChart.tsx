@@ -24,14 +24,14 @@ interface UsageTrendChartProps {
   range: UsageRangeSelection;
   rangeLabel: string;
   appType?: string;
-  refreshIntervalMs: number;
+  refreshIntervalMs?: number;
 }
 
 export function UsageTrendChart({
   range,
   rangeLabel,
   appType,
-  refreshIntervalMs,
+  refreshIntervalMs = 0,
 }: UsageTrendChartProps) {
   const { t, i18n } = useTranslation();
   const { startDate, endDate } = resolveUsageRange(range);

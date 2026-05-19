@@ -29,9 +29,33 @@ export interface GeminiProviderPreset {
   // 图标配置
   icon?: string; // 图标名称
   iconColor?: string; // 图标颜色
+  // 是否在 UI 中隐藏该预设（保留数据兼容，不展示为默认推荐）
+  hidden?: boolean;
+  // 供应商类型标识（用于 BistroCode/NewAPI 等定制逻辑）
+  providerType?: string;
 }
 
 export const geminiProviderPresets: GeminiProviderPreset[] = [
+  {
+    name: "BistroCode",
+    websiteUrl: "https://bistrocode.online",
+    apiKeyUrl: "https://bistrocode.online",
+    settingsConfig: {
+      env: {
+        GOOGLE_GEMINI_BASE_URL: "https://bistrocode.online",
+        GEMINI_API_KEY: "",
+        GEMINI_MODEL: "gemini-3.1-pro",
+      },
+    },
+    baseURL: "https://bistrocode.online",
+    model: "gemini-3.1-pro",
+    description: "BistroCode",
+    category: "aggregator",
+    endpointCandidates: ["https://bistrocode.online"],
+    icon: "bistrocode",
+    iconColor: "#16A34A",
+    providerType: "bistrocode",
+  },
   {
     name: "Google Official",
     websiteUrl: "https://ai.google.dev/",

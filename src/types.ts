@@ -211,6 +211,7 @@ export type ClaudeApiKeyField = "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY";
 export interface VisibleApps {
   claude: boolean;
   "claude-desktop": boolean;
+  cursor: boolean;
   codex: boolean;
   gemini: boolean;
   opencode: boolean;

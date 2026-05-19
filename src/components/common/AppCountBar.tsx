@@ -1,18 +1,18 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import type { AppId } from "@/lib/api/types";
 import { APP_IDS, APP_ICON_MAP } from "@/config/appConfig";
+import type { NonCursorAppId } from "@/config/appConfig";
 
 interface AppCountBarProps {
   totalLabel: string;
-  counts: Partial<Record<AppId, number>>;
-  appIds?: AppId[];
+  counts: Partial<Record<NonCursorAppId, number>>;
+  appIds?: NonCursorAppId[];
 }
 
 export const AppCountBar: React.FC<AppCountBarProps> = ({
   totalLabel,
   counts,
-  appIds = APP_IDS,
+  appIds = APP_IDS.filter((app) => app !== "cursor"),
 }) => {
   return (
     <div className="flex-shrink-0 py-4 glass rounded-xl border border-white/10 mb-4 px-6 flex items-center justify-between gap-4">

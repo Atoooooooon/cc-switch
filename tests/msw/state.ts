@@ -10,7 +10,10 @@ import type {
 type ProvidersByApp = Record<AppId, Record<string, Provider>>;
 type CurrentProviderState = Record<AppId, string>;
 type McpConfigState = Record<AppId, Record<string, McpServer>>;
-type LiveProviderIdsByApp = Record<"opencode" | "openclaw" | "hermes", string[]>;
+type LiveProviderIdsByApp = Record<
+  "opencode" | "openclaw" | "hermes",
+  string[]
+>;
 
 const createDefaultProviders = (): ProvidersByApp => ({
   claude: {
@@ -32,6 +35,7 @@ const createDefaultProviders = (): ProvidersByApp => ({
     },
   },
   "claude-desktop": {},
+  cursor: {},
   codex: {
     "codex-1": {
       id: "codex-1",
@@ -73,6 +77,7 @@ const createDefaultProviders = (): ProvidersByApp => ({
 const createDefaultCurrent = (): CurrentProviderState => ({
   claude: "claude-1",
   "claude-desktop": "",
+  cursor: "",
   codex: "codex-1",
   gemini: "gemini-1",
   opencode: "",
@@ -167,6 +172,7 @@ let mcpConfigs: McpConfigState = {
     },
   },
   "claude-desktop": {},
+  cursor: {},
   codex: {
     httpServer: {
       id: "httpServer",
@@ -235,6 +241,7 @@ export const resetProviderState = () => {
       },
     },
     "claude-desktop": {},
+    cursor: {},
     codex: {
       httpServer: {
         id: "httpServer",
@@ -266,9 +273,9 @@ export const getProviders = (appType: AppId) =>
 
 export const getCurrentProviderId = (appType: AppId) => current[appType] ?? "";
 
-export const getLiveProviderIds = (appType: "opencode" | "openclaw" | "hermes") => [
-  ...liveProviderIds[appType],
-];
+export const getLiveProviderIds = (
+  appType: "opencode" | "openclaw" | "hermes",
+) => [...liveProviderIds[appType]];
 
 export const setLiveProviderIds = (
   appType: "opencode" | "openclaw" | "hermes",

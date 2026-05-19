@@ -10,7 +10,7 @@ import {
   useImportMcpFromApps,
 } from "@/hooks/useMcp";
 import type { McpServer } from "@/types";
-import type { AppId } from "@/lib/api/types";
+import type { NonCursorAppId } from "@/config/appConfig";
 import McpFormModal from "./McpFormModal";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Edit3, Trash2, ExternalLink } from "lucide-react";
@@ -75,7 +75,7 @@ const UnifiedMcpPanel = React.forwardRef<
 
   const handleToggleApp = async (
     serverId: string,
-    app: AppId,
+    app: NonCursorAppId,
     enabled: boolean,
   ) => {
     try {
@@ -217,7 +217,11 @@ UnifiedMcpPanel.displayName = "UnifiedMcpPanel";
 interface UnifiedMcpListItemProps {
   id: string;
   server: McpServer;
-  onToggleApp: (serverId: string, app: AppId, enabled: boolean) => void;
+  onToggleApp: (
+    serverId: string,
+    app: NonCursorAppId,
+    enabled: boolean,
+  ) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   isLast?: boolean;

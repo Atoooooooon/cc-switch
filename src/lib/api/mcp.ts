@@ -6,6 +6,7 @@ import type {
   McpServersMap,
   McpStatus,
 } from "@/types";
+import type { NonCursorAppId } from "@/config/appConfig";
 import type { AppId } from "./types";
 
 export const mcpApi = {
@@ -114,7 +115,7 @@ export const mcpApi = {
    */
   async toggleApp(
     serverId: string,
-    app: AppId,
+    app: NonCursorAppId,
     enabled: boolean,
   ): Promise<void> {
     return await invoke("toggle_mcp_app", { serverId, app, enabled });

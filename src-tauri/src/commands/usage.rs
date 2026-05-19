@@ -1,11 +1,16 @@
 //! 使用统计相关命令
 
 use crate::error::AppError;
+use crate::proxy::usage::calculator::CostCalculator;
+use crate::proxy::usage::parser::TokenUsage;
 use crate::services::usage_stats::*;
 use crate::store::AppState;
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use tauri::State;
+
+const BISTROCODE_QUOTA_PER_USD: i64 = 500_000;
 
 /// 获取使用量汇总
 #[tauri::command]
@@ -87,6 +92,181 @@ pub fn get_request_detail(
     request_id: String,
 ) -> Result<Option<RequestLogDetail>, AppError> {
     state.db.get_request_detail(&request_id)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BistroCodeUsageEstimate {
+    pub official_cost_usd: String,
+    pub bistrocode_cost_usd: String,
+    pub estimated_savings_usd: String,
+    pub bistrocode_quota_used: u64,
+    pub priced_requests: u64,
+    pub unpriced_requests: u64,
+    pub total_requests: u64,
+    pub official_total_tokens: u64,
+    pub bistrocode_total_tokens: u64,
+}
+
+#[tauri::command]
+pub async fn get_bistrocode_usage_estimate(
+    state: State<'_, AppState>,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+) -> Result<BistroCodeUsageEstimate, AppError> {
+    let db = state.db.clone();
+    let pricing = crate::commands::balance::fetch_bistrocode_pricing()
+        .await
+        .map_err(AppError::Config)?;
+    let summary = db.get_usage_summary(start_date, end_date, None)?;
+    let logs = db.get_request_logs(
+        &LogFilters {
+            start_date,
+            end_date,
+            ..Default::default()
+        },
+        0,
+        10_000,
+    )?;
+
+    let default_group_ratio =
+        Decimal::from_str(&pricing.default_group_ratio.to_string()).unwrap_or(Decimal::new(2, 1));
+    let pricing_models = pricing.models;
+
+    let mut bistrocode_total = Decimal::ZERO;
+    let mut bistrocode_quota_used: u64 = 0;
+    let mut official_total = Decimal::ZERO;
+    let mut priced_requests: u64 = 0;
+    let mut unpriced_requests: u64 = 0;
+
+    for log in logs.data {
+        let model_pricing = {
+            let conn = crate::database::lock_conn!(db.conn);
+            crate::services::usage_stats::find_model_pricing(&conn, &log.model)
+        };
+
+        let Some(model_pricing) = model_pricing else {
+            unpriced_requests += 1;
+            continue;
+        };
+
+        let usage = TokenUsage {
+            input_tokens: log.input_tokens,
+            output_tokens: log.output_tokens,
+            cache_read_tokens: log.cache_read_tokens,
+            cache_creation_tokens: log.cache_creation_tokens,
+            model: None,
+            message_id: None,
+        };
+        let official = CostCalculator::calculate_for_app(
+            &log.app_type,
+            &usage,
+            &model_pricing,
+            Decimal::ONE,
+        )
+        .total_cost;
+        official_total += official;
+
+        let Some(bistro_model) = find_bistrocode_pricing(&pricing_models, &log.model) else {
+            unpriced_requests += 1;
+            continue;
+        };
+
+        let quota = estimate_bistrocode_quota(&log.app_type, &usage, bistro_model, default_group_ratio);
+        bistrocode_quota_used = bistrocode_quota_used.saturating_add(quota);
+        bistrocode_total += Decimal::from(quota) / Decimal::from(BISTROCODE_QUOTA_PER_USD);
+        priced_requests += 1;
+    }
+
+    let savings = if official_total > bistrocode_total {
+        official_total - bistrocode_total
+    } else {
+        Decimal::ZERO
+    };
+
+    Ok(BistroCodeUsageEstimate {
+        official_cost_usd: format!("{:.6}", official_total),
+        bistrocode_cost_usd: format!("{:.6}", bistrocode_total),
+        estimated_savings_usd: format!("{:.6}", savings),
+        bistrocode_quota_used,
+        priced_requests,
+        unpriced_requests,
+        total_requests: summary.total_requests,
+        official_total_tokens: summary.real_total_tokens,
+        bistrocode_total_tokens: summary.real_total_tokens,
+    })
+}
+
+fn find_bistrocode_pricing<'a>(
+    models: &'a [crate::commands::balance::BistroCodePricingModel],
+    model: &str,
+) -> Option<&'a crate::commands::balance::BistroCodePricingModel> {
+    let normalized = normalize_model_id(model);
+    models
+        .iter()
+        .find(|item| normalize_model_id(&item.model_name) == normalized)
+        .or_else(|| {
+            models.iter().find(|item| {
+                let item_id = normalize_model_id(&item.model_name);
+                !item_id.is_empty() && normalized.starts_with(&item_id)
+            })
+        })
+}
+
+fn normalize_model_id(model: &str) -> String {
+    model
+        .trim()
+        .trim_matches('"')
+        .to_ascii_lowercase()
+        .replace("openai/", "")
+        .replace("anthropic/", "")
+        .replace("google/", "")
+}
+
+fn decimal_from_f64(value: f64, fallback: Decimal) -> Decimal {
+    Decimal::from_str(&value.to_string()).unwrap_or(fallback)
+}
+
+fn estimate_bistrocode_quota(
+    app_type: &str,
+    usage: &TokenUsage,
+    pricing: &crate::commands::balance::BistroCodePricingModel,
+    group_ratio: Decimal,
+) -> u64 {
+    let model_ratio = decimal_from_f64(pricing.model_ratio, Decimal::ZERO);
+    let completion_ratio = decimal_from_f64(pricing.completion_ratio, Decimal::ONE);
+    let cache_ratio = decimal_from_f64(pricing.cache_ratio.unwrap_or(1.0), Decimal::ONE);
+    let create_cache_ratio =
+        decimal_from_f64(pricing.create_cache_ratio.unwrap_or(1.0), Decimal::ONE);
+
+    if pricing.quota_type == 1 {
+        let model_price = decimal_from_f64(pricing.model_price, Decimal::ZERO);
+        let quota = model_price * Decimal::from(BISTROCODE_QUOTA_PER_USD) * group_ratio;
+        return quota.round().to_u64().unwrap_or(0);
+    }
+
+    let mut input_tokens = Decimal::from(usage.input_tokens);
+    let cache_read_tokens = Decimal::from(usage.cache_read_tokens);
+    let cache_creation_tokens = Decimal::from(usage.cache_creation_tokens);
+
+    if matches!(app_type, "codex" | "gemini") {
+        input_tokens -= cache_read_tokens;
+        input_tokens -= cache_creation_tokens;
+        if input_tokens < Decimal::ZERO {
+            input_tokens = Decimal::ZERO;
+        }
+    }
+
+    let weighted_tokens = input_tokens
+        + Decimal::from(usage.output_tokens) * completion_ratio
+        + cache_read_tokens * cache_ratio
+        + cache_creation_tokens * create_cache_ratio;
+    let quota = weighted_tokens * model_ratio * group_ratio;
+
+    if quota > Decimal::ZERO && quota < Decimal::ONE {
+        return 1;
+    }
+    quota.round().to_u64().unwrap_or(0)
 }
 
 /// 获取模型定价列表
