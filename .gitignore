@@ -5,6 +5,8 @@ release/
 *.log
 .env
 .env.local
+.secrets/
+internal-builds/
 *.tsbuildinfo
 .npmrc
 CLAUDE.md
