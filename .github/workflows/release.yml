@@ -19,10 +19,6 @@ jobs:
       matrix:
         include:
           - os: windows-2022
-          - os: ubuntu-22.04
-          - os: ubuntu-22.04-arm
-            arch: arm64
-          - os: macos-14
 
     steps:
       - name: Checkout
@@ -420,7 +416,9 @@ jobs:
           }
           # 绿色版（portable）：仅可执行文件打 zip（不参与 Updater）
           $exeCandidates = @(
+            'src-tauri/target/release/bistrocode-switch.exe',
             'src-tauri/target/release/cc-switch.exe',
+            'src-tauri/target/x86_64-pc-windows-msvc/release/bistrocode-switch.exe',
             'src-tauri/target/x86_64-pc-windows-msvc/release/cc-switch.exe'
           )
           $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
