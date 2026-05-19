@@ -58,9 +58,7 @@ function createAuthState() {
   return value;
 }
 
-function normalizeAccount(
-  value: unknown,
-): BistroCodeAccountState | null {
+function normalizeAccount(value: unknown): BistroCodeAccountState | null {
   if (!value || typeof value !== "object") return null;
   const data = value as Record<string, unknown>;
   const id = Number(data.id);
@@ -79,7 +77,8 @@ function normalizeAccount(
     quota: Number(data.quota ?? 0),
     usedQuota: Number(data.usedQuota ?? data.used_quota ?? 0),
     requestCount: Number(data.requestCount ?? data.request_count ?? 0),
-    quotaPerUsd: Number(data.quotaPerUsd ?? data.quota_per_usd ?? 0) || undefined,
+    quotaPerUsd:
+      Number(data.quotaPerUsd ?? data.quota_per_usd ?? 0) || undefined,
     accessToken: String(data.accessToken ?? data.access_token ?? ""),
     desktopTokens: Array.isArray(data.desktopTokens)
       ? data.desktopTokens
@@ -88,7 +87,9 @@ function normalizeAccount(
       : Array.isArray(data.desktop_tokens)
         ? data.desktop_tokens
             .map((item) => normalizeDesktopToken(item))
-            .filter((item): item is BistroCodeDesktopTokenConfig => Boolean(item))
+            .filter((item): item is BistroCodeDesktopTokenConfig =>
+              Boolean(item),
+            )
         : undefined,
   };
 }
@@ -207,67 +208,74 @@ export function BistroCodeAuthProvider({
     let active = true;
 
     const setup = async () => {
-      const off = await listen<string>("bistrocode-auth-link", async (event) => {
-        const raw = event.payload;
-        try {
-          const url = new URL(raw);
-          const code = url.searchParams.get("code") ?? "";
-          const state = url.searchParams.get("state") ?? "";
-          if (!code || state !== authStateRef.current) {
-            setAuthStatus("error");
-            setAuthError("授权链接无效或已过期");
-            toast.error("授权链接无效或已过期");
-            return;
-          }
-          if (handledCodesRef.current.has(code)) {
-            return;
-          }
-          handledCodesRef.current.add(code);
-          setAuthStatus("authorizing");
-          setAuthError(null);
-          const result = (await invoke("exchange_bistrocode_auth_code", {
-            code,
-            state,
-          })) as {
-            success?: boolean;
-            data?: BistroCodeAuthUser;
-            message?: string;
-          };
-          if (!result?.success || !result.data?.accessToken || !result.data?.id) {
-            const message = result?.message || "授权失败";
+      const off = await listen<string>(
+        "bistrocode-auth-link",
+        async (event) => {
+          const raw = event.payload;
+          try {
+            const url = new URL(raw);
+            const code = url.searchParams.get("code") ?? "";
+            const state = url.searchParams.get("state") ?? "";
+            if (!code || state !== authStateRef.current) {
+              setAuthStatus("error");
+              setAuthError("授权链接无效或已过期");
+              toast.error("授权链接无效或已过期");
+              return;
+            }
+            if (handledCodesRef.current.has(code)) {
+              return;
+            }
+            handledCodesRef.current.add(code);
+            setAuthStatus("authorizing");
+            setAuthError(null);
+            const result = (await invoke("exchange_bistrocode_auth_code", {
+              code,
+              state,
+            })) as {
+              success?: boolean;
+              data?: BistroCodeAuthUser;
+              message?: string;
+            };
+            if (
+              !result?.success ||
+              !result.data?.accessToken ||
+              !result.data?.id
+            ) {
+              const message = result?.message || "授权失败";
+              setAuthStatus("error");
+              setAuthError(message);
+              setAuthState(createAuthState());
+              toast.error(message);
+              return;
+            }
+            syncAccount({
+              id: Number(result.data.id),
+              username: result.data.username ?? "",
+              displayName: result.data.displayName,
+              email: result.data.email,
+              group: result.data.group,
+              quota: Number(result.data.quota ?? 0),
+              usedQuota: Number(result.data.usedQuota ?? 0),
+              requestCount: Number(result.data.requestCount ?? 0),
+              quotaPerUsd: 500_000,
+              accessToken: result.data.accessToken,
+            });
+            toast.success("BistroCode 账号已连接");
+          } catch (error) {
+            console.error("Failed to handle BistroCode auth link", error);
+            const message =
+              error instanceof Error
+                ? error.message
+                : typeof error === "string"
+                  ? error
+                  : "处理授权回调失败";
             setAuthStatus("error");
             setAuthError(message);
             setAuthState(createAuthState());
             toast.error(message);
-            return;
           }
-          syncAccount({
-            id: Number(result.data.id),
-            username: result.data.username ?? "",
-            displayName: result.data.displayName,
-            email: result.data.email,
-            group: result.data.group,
-            quota: Number(result.data.quota ?? 0),
-            usedQuota: Number(result.data.usedQuota ?? 0),
-            requestCount: Number(result.data.requestCount ?? 0),
-            quotaPerUsd: 500_000,
-            accessToken: result.data.accessToken,
-          });
-          toast.success("BistroCode 账号已连接");
-        } catch (error) {
-          console.error("Failed to handle BistroCode auth link", error);
-          const message =
-            error instanceof Error
-              ? error.message
-              : typeof error === "string"
-                ? error
-                : "处理授权回调失败";
-          setAuthStatus("error");
-          setAuthError(message);
-          setAuthState(createAuthState());
-          toast.error(message);
-        }
-      });
+        },
+      );
       if (!active) {
         off();
         return;
@@ -320,7 +328,9 @@ export function BistroCodeAuthProvider({
 export function useBistroCodeAuth() {
   const context = useContext(BistroCodeAuthContext);
   if (!context) {
-    throw new Error("useBistroCodeAuth must be used within BistroCodeAuthProvider");
+    throw new Error(
+      "useBistroCodeAuth must be used within BistroCodeAuthProvider",
+    );
   }
   return context;
 }

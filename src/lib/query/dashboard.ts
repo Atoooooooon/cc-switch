@@ -47,7 +47,6 @@ export function useCloudUserQuotaDates(
     },
     enabled: options.enabled ?? true,
     refetchInterval: options.refetchInterval ?? false,
-    refetchIntervalInBackground:
-      options.refetchIntervalInBackground ?? false,
+    refetchIntervalInBackground: options.refetchIntervalInBackground ?? false,
   });
 }

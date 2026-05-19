@@ -131,8 +131,14 @@ pub(crate) async fn fetch_bistrocode_pricing() -> Result<BistroCodePricingRespon
                         .unwrap_or("")
                         .to_string(),
                     quota_type: item.get("quota_type").and_then(|v| v.as_i64()).unwrap_or(0),
-                    model_ratio: item.get("model_ratio").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                    model_price: item.get("model_price").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                    model_ratio: item
+                        .get("model_ratio")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0),
+                    model_price: item
+                        .get("model_price")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0),
                     completion_ratio: item
                         .get("completion_ratio")
                         .and_then(|v| v.as_f64())
@@ -187,11 +193,7 @@ pub async fn get_bistrocode_account(
         request = request.header("Authorization", authorization);
     }
 
-    if let Some(user_id) = userId
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(user_id) = userId.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         request = request.header("New-Api-User", user_id);
     }
 

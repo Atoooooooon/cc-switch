@@ -27,7 +27,11 @@ import { cn } from "@/lib/utils";
 import { fmtInt, fmtUsd } from "@/components/usage/format";
 import { useBistroCodeAuth } from "@/contexts/BistroCodeAuthContext";
 import type { BistroCodeDesktopTokenConfig } from "@/lib/api/bistrocode";
-import type { Provider, UniversalProvider, UniversalProviderModels } from "@/types";
+import type {
+  Provider,
+  UniversalProvider,
+  UniversalProviderModels,
+} from "@/types";
 
 const DESKTOP_AUTHORIZE_PATH = "/desktop/authorize";
 const DEFAULT_QUOTA_PER_USD = 500_000;
@@ -45,10 +49,7 @@ export const BISTROCODE_MANAGED_PROVIDER_IDS = new Set(
   ]),
 );
 
-const BISTROCODE_PROVIDER_APPS: Record<
-  string,
-  UniversalProvider["apps"]
-> = {
+const BISTROCODE_PROVIDER_APPS: Record<string, UniversalProvider["apps"]> = {
   claude: { claude: true, codex: false, gemini: false },
   gpt: { claude: false, codex: true, gemini: false },
   gemini: { claude: false, codex: false, gemini: true },
@@ -107,7 +108,9 @@ function formatQuotaUsd(
   return fmtUsd(quota / divisor, 4);
 }
 
-function tokenConfigSignature(tokens: BistroCodeDesktopTokenConfig[] | undefined) {
+function tokenConfigSignature(
+  tokens: BistroCodeDesktopTokenConfig[] | undefined,
+) {
   return (tokens ?? [])
     .map((token) => `${token.id}:${token.group}:${token.key}:${token.purpose}`)
     .sort()
@@ -198,10 +201,10 @@ function providerFromTokenForApp(
       ? universal.baseUrl
       : `${universal.baseUrl.replace(/\/+$/, "")}/v1`;
     const codexModel =
-      model && "model" in model ? model.model ?? "gpt-5.4" : "gpt-5.4";
+      model && "model" in model ? (model.model ?? "gpt-5.4") : "gpt-5.4";
     const reasoningEffort =
       model && "reasoningEffort" in model
-        ? model.reasoningEffort ?? "high"
+        ? (model.reasoningEffort ?? "high")
         : "high";
     settingsConfig = {
       auth: { OPENAI_API_KEY: token.key },
@@ -223,7 +226,7 @@ requires_openai_auth = true`,
         GEMINI_API_KEY: token.key,
         GEMINI_MODEL:
           model && "model" in model
-            ? model.model ?? "gemini-3.1-pro"
+            ? (model.model ?? "gemini-3.1-pro")
             : "gemini-3.1-pro",
       },
     };
@@ -234,19 +237,19 @@ requires_openai_auth = true`,
         ANTHROPIC_AUTH_TOKEN: token.key,
         ANTHROPIC_MODEL:
           model && "model" in model
-            ? model.model ?? "claude-sonnet-4-6"
+            ? (model.model ?? "claude-sonnet-4-6")
             : "claude-sonnet-4-6",
         ANTHROPIC_DEFAULT_HAIKU_MODEL:
           model && "haikuModel" in model
-            ? model.haikuModel ?? "claude-haiku-4-5-20251001"
+            ? (model.haikuModel ?? "claude-haiku-4-5-20251001")
             : "claude-haiku-4-5-20251001",
         ANTHROPIC_DEFAULT_SONNET_MODEL:
           model && "sonnetModel" in model
-            ? model.sonnetModel ?? "claude-sonnet-4-6"
+            ? (model.sonnetModel ?? "claude-sonnet-4-6")
             : "claude-sonnet-4-6",
         ANTHROPIC_DEFAULT_OPUS_MODEL:
           model && "opusModel" in model
-            ? model.opusModel ?? "claude-opus-4-7"
+            ? (model.opusModel ?? "claude-opus-4-7")
             : "claude-opus-4-7",
       },
     };
@@ -303,7 +306,9 @@ export function BistroCodePlatformPanel({
   } = useBistroCodeAuth();
   const queryClient = useQueryClient();
   const syncedTokenSignatureRef = useRef("");
-  const [providerSyncError, setProviderSyncError] = useState<string | null>(null);
+  const [providerSyncError, setProviderSyncError] = useState<string | null>(
+    null,
+  );
 
   const accountQuery = useQuery({
     queryKey: ["bistrocode", "account", userId],
@@ -338,7 +343,14 @@ export function BistroCodePlatformPanel({
       desktopTokens: linkedAccount?.desktopTokens,
     });
     void queryClient.invalidateQueries({ queryKey: ["usage"] });
-  }, [accountQuery.data, accessToken, linkedAccount?.desktopTokens, queryClient, syncAccount, userId]);
+  }, [
+    accountQuery.data,
+    accessToken,
+    linkedAccount?.desktopTokens,
+    queryClient,
+    syncAccount,
+    userId,
+  ]);
 
   useEffect(() => {
     if (!linkedAccount || !tokenConfigsQuery.data?.length) return;
@@ -403,7 +415,9 @@ export function BistroCodePlatformPanel({
 
   const account = accountQuery.data?.account ?? linkedAccount ?? undefined;
   const isConnected =
-    (accountQuery.data?.loggedIn ?? false) || isAuthenticated || Boolean(account);
+    (accountQuery.data?.loggedIn ?? false) ||
+    isAuthenticated ||
+    Boolean(account);
   const isConnecting = authStatus === "authorizing";
   const isRefreshing = accountQuery.isFetching;
   const isTokenRefreshing = tokenConfigsQuery.isFetching;
@@ -420,7 +434,8 @@ export function BistroCodePlatformPanel({
   useEffect(() => {
     if (!isAuthenticated || accountQuery.isFetching) return;
     if (accountQuery.data?.loggedIn === false) {
-      const message = accountQuery.data.message || "BistroCode 授权已失效，请重新连接账号";
+      const message =
+        accountQuery.data.message || "BistroCode 授权已失效，请重新连接账号";
       clearAccount();
       toast.error(message);
     }
@@ -487,7 +502,9 @@ export function BistroCodePlatformPanel({
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1 font-medium text-foreground">
                   <UserRound className="h-3.5 w-3.5" />
-                  {account.displayName || account.username || `用户 ${account.id}`}
+                  {account.displayName ||
+                    account.username ||
+                    `用户 ${account.id}`}
                   <span className="text-muted-foreground">ID {account.id}</span>
                 </span>
                 {account.email && <span>{account.email}</span>}
@@ -628,11 +645,11 @@ export function BistroCodePlatformPanel({
           <div className="mt-4 text-xs font-medium text-muted-foreground">
             默认 API Key 配置项
           </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-3">
-          {desktopTokens.map((token) => (
-            <TokenConfigCard key={token.id} token={token} />
-          ))}
-        </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {desktopTokens.map((token) => (
+              <TokenConfigCard key={token.id} token={token} />
+            ))}
+          </div>
         </>
       ) : isConnected ? (
         <div className="mt-3 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -651,7 +668,9 @@ export function BistroCodePlatformPanel({
           </div>
           <div className="mt-1 space-y-1">
             {authError && <div>{authError}</div>}
-            {accountQuery.data?.message && <div>{accountQuery.data.message}</div>}
+            {accountQuery.data?.message && (
+              <div>{accountQuery.data.message}</div>
+            )}
             {accountQuery.error && <div>{String(accountQuery.error)}</div>}
             {providerSyncError && (
               <div>同步默认工具配置失败：{providerSyncError}</div>
@@ -715,7 +734,9 @@ function Metric({
     <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2">
       <div className="text-[11px] text-muted-foreground">{label}</div>
       <div className="mt-1 flex min-h-5 items-center gap-2 truncate text-sm font-semibold text-foreground">
-        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        {loading && (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+        )}
         <span className="truncate">{value}</span>
       </div>
       {subValue && (

@@ -52,9 +52,7 @@ fn open_external_with_system(url: &str) -> Result<(), String> {
         command
             .args(["/C", "start", "", url])
             .creation_flags(CREATE_NO_WINDOW);
-        command
-            .spawn()
-            .map_err(|e| format!("打开链接失败: {e}"))?;
+        command.spawn().map_err(|e| format!("打开链接失败: {e}"))?;
         return Ok(());
     }
 

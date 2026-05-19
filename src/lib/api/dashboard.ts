@@ -41,6 +41,10 @@ export const dashboardApi = {
     endTimestamp: number,
     options: DashboardApiOptions,
   ): Promise<QuotaDataItem[]> {
-    return dashboardApi.getUserQuotaDates(startTimestamp, endTimestamp, options);
+    return dashboardApi.getUserQuotaDates(
+      startTimestamp,
+      endTimestamp,
+      options,
+    );
   },
 };

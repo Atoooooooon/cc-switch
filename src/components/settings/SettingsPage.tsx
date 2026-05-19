@@ -465,7 +465,6 @@ export function SettingsPage({
               <TabsContent value="about" className="mt-0">
                 <AboutSection isPortable={isPortable} />
               </TabsContent>
-
             </div>
 
             {activeTab === "advanced" && settings && (

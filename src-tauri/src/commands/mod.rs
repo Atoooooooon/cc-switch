@@ -1,8 +1,8 @@
 #![allow(non_snake_case)]
 
 mod auth;
-mod bistrocode_auth;
 mod balance;
+mod bistrocode_auth;
 mod codex_oauth;
 mod coding_plan;
 mod config;
@@ -35,8 +35,8 @@ mod webdav_sync;
 mod workspace;
 
 pub use auth::*;
-pub use bistrocode_auth::*;
 pub use balance::*;
+pub use bistrocode_auth::*;
 pub use codex_oauth::*;
 pub use coding_plan::*;
 pub use config::*;

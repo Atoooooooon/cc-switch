@@ -158,13 +158,9 @@ pub async fn get_bistrocode_usage_estimate(
             model: None,
             message_id: None,
         };
-        let official = CostCalculator::calculate_for_app(
-            &log.app_type,
-            &usage,
-            &model_pricing,
-            Decimal::ONE,
-        )
-        .total_cost;
+        let official =
+            CostCalculator::calculate_for_app(&log.app_type, &usage, &model_pricing, Decimal::ONE)
+                .total_cost;
         official_total += official;
 
         let Some(bistro_model) = find_bistrocode_pricing(&pricing_models, &log.model) else {
@@ -172,7 +168,8 @@ pub async fn get_bistrocode_usage_estimate(
             continue;
         };
 
-        let quota = estimate_bistrocode_quota(&log.app_type, &usage, bistro_model, default_group_ratio);
+        let quota =
+            estimate_bistrocode_quota(&log.app_type, &usage, bistro_model, default_group_ratio);
         bistrocode_quota_used = bistrocode_quota_used.saturating_add(quota);
         bistrocode_total += Decimal::from(quota) / Decimal::from(BISTROCODE_QUOTA_PER_USD);
         priced_requests += 1;

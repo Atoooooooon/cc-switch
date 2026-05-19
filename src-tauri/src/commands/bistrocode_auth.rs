@@ -210,7 +210,9 @@ pub async fn ensure_bistrocode_default_tokens(
 
     let client = crate::proxy::http_client::get();
     let response = client
-        .post(format!("{BISTROCODE_AUTH_BASE_URL}/api/desktop/default-tokens"))
+        .post(format!(
+            "{BISTROCODE_AUTH_BASE_URL}/api/desktop/default-tokens"
+        ))
         .timeout(Duration::from_secs(20))
         .header("Accept", "application/json")
         .header("Authorization", bistrocode_authorization_header(token))

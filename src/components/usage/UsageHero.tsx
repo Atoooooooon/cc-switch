@@ -39,7 +39,10 @@ function getBucketIndex(
 ) {
   if (end <= start) return 0;
   const ratio = (timestamp - start) / (end - start);
-  return Math.min(bucketCount - 1, Math.max(0, Math.floor(ratio * bucketCount)));
+  return Math.min(
+    bucketCount - 1,
+    Math.max(0, Math.floor(ratio * bucketCount)),
+  );
 }
 
 function buildSparklines(
@@ -113,18 +116,13 @@ function MiniCard({
       <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
         {value}
       </div>
-      <div className="mt-0.5 text-xs text-muted-foreground">
-        {description}
-      </div>
+      <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>
       <Sparkline values={values} />
     </div>
   );
 }
 
-export function UsageHero({
-  range,
-  refreshIntervalMs = 0,
-}: UsageHeroProps) {
+export function UsageHero({ range, refreshIntervalMs = 0 }: UsageHeroProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { account, isAuthenticated, accessToken, userId } = useBistroCodeAuth();
@@ -152,7 +150,11 @@ export function UsageHero({
     try {
       await settingsApi.openExternal("https://bistrocode.online/console");
     } catch {
-      window.open("https://bistrocode.online/console", "_blank", "noopener,noreferrer");
+      window.open(
+        "https://bistrocode.online/console",
+        "_blank",
+        "noopener,noreferrer",
+      );
     }
   };
 
@@ -227,9 +229,7 @@ export function UsageHero({
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
-              <h3 className="text-base font-semibold">
-                今日使用概览
-              </h3>
+              <h3 className="text-base font-semibold">今日使用概览</h3>
               <p className="text-sm text-muted-foreground">
                 展示今天的真实用量和平台价格优惠。
               </p>
@@ -237,8 +237,12 @@ export function UsageHero({
             <div className="flex flex-wrap items-center gap-2">
               {account ? (
                 <div className="rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs text-muted-foreground">
-                  {account.displayName || account.username || `用户 ${account.id}`}
-                  <span className="ml-1 text-muted-foreground">ID {account.id}</span>
+                  {account.displayName ||
+                    account.username ||
+                    `用户 ${account.id}`}
+                  <span className="ml-1 text-muted-foreground">
+                    ID {account.id}
+                  </span>
                 </div>
               ) : null}
               <Button
@@ -293,21 +297,27 @@ export function UsageHero({
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <MiniCard
               label="官方价格"
-              value={estimateLoading ? "计算中" : fmtUsd(values.officialCost, 4)}
+              value={
+                estimateLoading ? "计算中" : fmtUsd(values.officialCost, 4)
+              }
               description="按当前 token 用量套用官方模型价格"
               values={[values.officialCost]}
               icon={BadgeDollarSign}
             />
             <MiniCard
               label="BistroCode 价格"
-              value={estimateLoading ? "计算中" : fmtUsd(values.bistrocodeCost, 4)}
+              value={
+                estimateLoading ? "计算中" : fmtUsd(values.bistrocodeCost, 4)
+              }
               description="按 BistroCode 云端价格折算"
               values={[values.bistrocodeCost]}
               icon={Wallet}
             />
             <MiniCard
               label="已优惠"
-              value={estimateLoading ? "计算中" : fmtUsd(values.estimatedSavings, 4)}
+              value={
+                estimateLoading ? "计算中" : fmtUsd(values.estimatedSavings, 4)
+              }
               description={`已匹配 ${fmtInt(estimate?.pricedRequests ?? 0)} 次请求`}
               values={[values.estimatedSavings]}
               icon={PiggyBank}

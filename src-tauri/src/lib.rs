@@ -59,9 +59,9 @@ pub use store::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
-use std::collections::HashSet;
 #[cfg(target_os = "macos")]
 use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -202,7 +202,9 @@ fn mark_seen_bistrocode_auth_link(url_str: &str) -> bool {
 
     static SEEN_AUTH_LINKS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let seen_links = SEEN_AUTH_LINKS.get_or_init(|| Mutex::new(HashSet::new()));
-    let mut guard = seen_links.lock().expect("bistrocode auth link set poisoned");
+    let mut guard = seen_links
+        .lock()
+        .expect("bistrocode auth link set poisoned");
     if guard.contains(&key) {
         return false;
     }
