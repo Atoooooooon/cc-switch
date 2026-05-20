@@ -338,11 +338,11 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
             <div className="flex items-center gap-2">
               <img
                 src={appIcon}
-                alt="BistroCode Switch"
+                alt="bistro-switch"
                 className="h-4 w-4 shrink-0"
               />
               <h4 className="text-lg font-semibold text-foreground">
-                BistroCode Switch
+                bistro-switch
               </h4>
             </div>
             <div className="flex items-center gap-2">

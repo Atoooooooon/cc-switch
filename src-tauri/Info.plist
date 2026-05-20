@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- 注册 BistroCode 新协议和 CC Switch 旧协议，用于深链接导入 -->
+  <!-- 注册 bistro-switch 新协议和旧协议，用于深链接导入 -->
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
       <key>CFBundleURLName</key>
-      <string>BistroCode Deep Link</string>
+      <string>bistro-switch Deep Link</string>
       <key>CFBundleURLSchemes</key>
       <array>
         <string>bistrocode</string>
@@ -15,7 +15,7 @@
     </dict>
     <dict>
       <key>CFBundleURLName</key>
-      <string>CC Switch Deep Link</string>
+      <string>bistro-switch Legacy Deep Link</string>
       <key>CFBundleURLSchemes</key>
       <array>
         <string>ccswitch</string>

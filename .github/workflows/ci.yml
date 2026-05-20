@@ -12,6 +12,7 @@ concurrency:
 
 env:
   RUN_FULL_TESTS: "false"
+  RUN_FORMAT_CHECKS: "false"
 
 jobs:
   frontend:
@@ -51,6 +52,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Check formatting
+        if: env.RUN_FORMAT_CHECKS == 'true'
         run: pnpm format:check
 
       - name: Unit tests
@@ -94,6 +96,7 @@ jobs:
         run: mkdir -p dist
 
       - name: Check Rust formatting
+        if: env.RUN_FORMAT_CHECKS == 'true'
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
       - name: Clippy

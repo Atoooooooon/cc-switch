@@ -390,16 +390,10 @@ impl ProxyService {
         })
     }
 
-    async fn emit_official_provider_warning_if_needed(
-        &self,
-        app: &AppType,
-        app_type_str: &str,
-    ) {
-        if let Ok(Some(current_id)) =
-            crate::settings::get_effective_current_provider(&self.db, app)
+    async fn emit_official_provider_warning_if_needed(&self, app: &AppType, app_type_str: &str) {
+        if let Ok(Some(current_id)) = crate::settings::get_effective_current_provider(&self.db, app)
         {
-            if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str)
-            {
+            if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str) {
                 if provider.category.as_deref() == Some("official") {
                     if let Some(handle) = self.app_handle.read().await.as_ref() {
                         let _ = handle.emit(
