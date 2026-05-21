@@ -494,6 +494,7 @@ export function BistroCodePlatformPanel({
     const params = new URLSearchParams({
       state: nextState,
       ts: String(Date.now()),
+      force_login: "1",
     });
     return openBistroCode(`${DESKTOP_AUTHORIZE_PATH}?${params.toString()}`);
   };
@@ -559,9 +560,7 @@ export function BistroCodePlatformPanel({
           <Button
             size="sm"
             onClick={() => void handlePrimaryAction()}
-            disabled={
-              isConnecting || (isConnected && !activeManagedProvider)
-            }
+            disabled={isConnecting || (isConnected && !activeManagedProvider)}
           >
             {isConnecting ? (
               <Loader2 className="h-4 w-4 animate-spin" />

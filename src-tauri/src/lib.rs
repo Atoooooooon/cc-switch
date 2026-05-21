@@ -115,12 +115,19 @@ fn handle_deeplink_url(
         return false;
     }
 
+    log::info!(
+        "[DeepLink] source={source} focus={} url={}",
+        focus_main_window,
+        redact_url_for_log(url_str)
+    );
+
     if url_str.starts_with("bistrocode://auth") {
         if !mark_seen_bistrocode_auth_link(url_str) {
             log::debug!("⊘ Duplicate BistroCode auth deep link ignored from {source}");
             return true;
         }
         log::info!("✓ BistroCode auth deep link detected from {source}");
+        remember_bistrocode_auth_link(url_str);
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.unminimize();
             let _ = window.show();
@@ -210,6 +217,40 @@ fn mark_seen_bistrocode_auth_link(url_str: &str) -> bool {
     }
     guard.insert(key);
     true
+}
+
+static PENDING_BISTROCODE_AUTH_LINK: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn pending_bistrocode_auth_link() -> &'static Mutex<Option<String>> {
+    PENDING_BISTROCODE_AUTH_LINK.get_or_init(|| Mutex::new(None))
+}
+
+fn remember_bistrocode_auth_link(url_str: &str) {
+    let mut guard = pending_bistrocode_auth_link()
+        .lock()
+        .expect("pending bistrocode auth link poisoned");
+    *guard = Some(url_str.to_string());
+    log::debug!(
+        "[BistroAuth] pending auth link stored: {}",
+        redact_url_for_log(url_str)
+    );
+}
+
+#[tauri::command]
+fn take_pending_bistrocode_auth_link() -> Option<String> {
+    let mut guard = pending_bistrocode_auth_link()
+        .lock()
+        .expect("pending bistrocode auth link poisoned");
+    let taken = guard.take();
+    if let Some(ref url) = taken {
+        log::debug!(
+            "[BistroAuth] pending auth link consumed: {}",
+            redact_url_for_log(url)
+        );
+    } else {
+        log::debug!("[BistroAuth] no pending auth link to consume");
+    }
+    taken
 }
 
 /// 更新托盘菜单的Tauri命令
@@ -1212,6 +1253,7 @@ pub fn run() {
             commands::merge_deeplink_config,
             commands::import_from_deeplink,
             commands::import_from_deeplink_unified,
+            take_pending_bistrocode_auth_link,
             commands::exchange_bistrocode_auth_code,
             commands::get_bistrocode_dashboard_quota,
             commands::ensure_bistrocode_default_tokens,

@@ -26,13 +26,43 @@ pub async fn open_external(app: AppHandle, url: String) -> Result<bool, String> 
     } else {
         format!("https://{url}")
     };
+    log::info!("[OpenExternal] request url={}", crate::redact_url_for_log(&url));
 
-    if open_external_with_system(&url).is_err() {
+    #[cfg(target_os = "windows")]
+    {
+        // Avoid `cmd /C start` for OAuth URLs: `&` in query strings is parsed as
+        // a command separator by cmd.exe, which can truncate the authorization URL.
         app.opener()
             .open_url(&url, None::<String>)
-            .map_err(|e| format!("打开链接失败: {e}"))?;
+            .map_err(|e| {
+                log::error!(
+                    "[OpenExternal] windows open_url failed url={} err={e}",
+                    crate::redact_url_for_log(&url)
+                );
+                format!("打开链接失败: {e}")
+            })?;
+        log::info!("[OpenExternal] windows opener succeeded url={}", crate::redact_url_for_log(&url));
+        return Ok(true);
     }
 
+    #[cfg(not(target_os = "windows"))]
+    if open_external_with_system(&url).is_err() {
+        log::warn!(
+            "[OpenExternal] system opener failed, fallback to opener url={}",
+            crate::redact_url_for_log(&url)
+        );
+        app.opener()
+            .open_url(&url, None::<String>)
+            .map_err(|e| {
+                log::error!(
+                    "[OpenExternal] fallback open_url failed url={} err={e}",
+                    crate::redact_url_for_log(&url)
+                );
+                format!("打开链接失败: {e}")
+            })?;
+    }
+
+    log::info!("[OpenExternal] success url={}", crate::redact_url_for_log(&url));
     Ok(true)
 }
 
