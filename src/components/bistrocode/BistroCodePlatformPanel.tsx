@@ -76,7 +76,7 @@ const BISTROCODE_PROVIDER_MODELS: Record<string, UniversalProviderModels> = {
   },
   gpt: {
     codex: {
-      model: "gpt-5.4",
+      model: "gpt-5.5",
       reasoningEffort: "high",
     },
   },
@@ -122,7 +122,10 @@ function tokenConfigSignature(
   tokens: BistroCodeDesktopTokenConfig[] | undefined,
 ) {
   return (tokens ?? [])
-    .map((token) => `${token.id}:${token.group}:${token.key}:${token.purpose}`)
+    .map(
+      (token) =>
+        `${token.id}:${token.group}:${token.key}:${token.purpose}:${JSON.stringify(token.models ?? {})}`,
+    )
     .sort()
     .join("|");
 }
@@ -142,7 +145,7 @@ function createManagedProvider(
     apps,
     baseUrl: token.baseUrl || BISTROCODE_BASE_URL,
     apiKey: token.key,
-    models: BISTROCODE_PROVIDER_MODELS[purpose] ?? {},
+    models: token.models ?? BISTROCODE_PROVIDER_MODELS[purpose] ?? {},
     websiteUrl: BISTROCODE_BASE_URL,
     icon: "bistrocode",
     iconColor: "#16A34A",
@@ -226,7 +229,7 @@ function providerFromTokenForApp(
       ? universal.baseUrl
       : `${universal.baseUrl.replace(/\/+$/, "")}/v1`;
     const codexModel =
-      model && "model" in model ? (model.model ?? "gpt-5.4") : "gpt-5.4";
+      model && "model" in model ? (model.model ?? "gpt-5.5") : "gpt-5.5";
     const reasoningEffort =
       model && "reasoningEffort" in model
         ? (model.reasoningEffort ?? "high")

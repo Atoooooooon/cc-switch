@@ -1,3 +1,4 @@
+import type { UniversalProviderModels } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface BistroCodeAccount {
@@ -56,6 +57,7 @@ export interface BistroCodeDesktopTokenConfig {
   group: string;
   purpose: string;
   modelMatch: string;
+  models?: UniversalProviderModels;
   baseUrl: string;
   createdTime: number;
 }

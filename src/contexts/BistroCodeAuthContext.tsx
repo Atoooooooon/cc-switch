@@ -109,6 +109,10 @@ function normalizeDesktopToken(
     group: String(data.group ?? ""),
     purpose: String(data.purpose ?? ""),
     modelMatch: String(data.modelMatch ?? data.model_match ?? ""),
+    models:
+      data.models && typeof data.models === "object"
+        ? (data.models as BistroCodeDesktopTokenConfig["models"])
+        : undefined,
     baseUrl: String(data.baseUrl ?? data.base_url ?? ""),
     createdTime: Number(data.createdTime ?? data.created_time ?? 0),
   };

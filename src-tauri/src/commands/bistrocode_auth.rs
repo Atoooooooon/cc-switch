@@ -75,6 +75,7 @@ pub struct BistroCodeDesktopTokenConfig {
     pub purpose: String,
     #[serde(alias = "model_match")]
     pub model_match: String,
+    pub models: Option<serde_json::Value>,
     #[serde(alias = "base_url")]
     pub base_url: String,
     #[serde(alias = "created_time")]
