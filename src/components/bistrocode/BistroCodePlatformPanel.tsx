@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { fmtInt, fmtUsd } from "@/components/usage/format";
 import { useBistroCodeAuth } from "@/contexts/BistroCodeAuthContext";
 import type { BistroCodeDesktopTokenConfig } from "@/lib/api/bistrocode";
+import type { AppId } from "@/lib/api/types";
 import type {
   Provider,
   UniversalProvider,
@@ -56,6 +57,13 @@ const BISTROCODE_PROVIDER_APPS: Record<string, UniversalProvider["apps"]> = {
   gpt: { claude: false, codex: true, gemini: false },
   gemini: { claude: false, codex: false, gemini: true },
 };
+
+const BISTROCODE_MANAGED_APP_IDS = new Set<AppId>([
+  "claude",
+  "cursor",
+  "codex",
+  "gemini",
+]);
 
 const BISTROCODE_PROVIDER_MODELS: Record<string, UniversalProviderModels> = {
   claude: {
@@ -172,6 +180,12 @@ function purposeForApp(appId: string) {
   if (appId === "codex") return "gpt";
   if (appId === "gemini") return "gemini";
   return "claude";
+}
+
+function isBistroCodeManagedProviderId(appId: string, providerId?: string) {
+  if (!providerId) return false;
+  const expectedId = BISTROCODE_PROVIDER_IDS[purposeForApp(appId)];
+  return providerId === `universal-${appProviderPrefix(appId)}-${expectedId}`;
 }
 
 export function selectBistroCodeManagedProvider(
@@ -317,6 +331,7 @@ export function BistroCodePlatformPanel({
   } = useBistroCodeAuth();
   const queryClient = useQueryClient();
   const syncedTokenSignatureRef = useRef("");
+  const reappliedCurrentSignatureRef = useRef("");
   const [providerSyncError, setProviderSyncError] = useState<string | null>(
     null,
   );
@@ -399,6 +414,25 @@ export function BistroCodePlatformPanel({
         if (cursorProvider) {
           await providersApi.add(cursorProvider, "cursor", false);
         }
+        const shouldReapplyCurrent =
+          BISTROCODE_MANAGED_APP_IDS.has(appId as AppId) &&
+          isBistroCodeManagedProviderId(appId, currentProviderId);
+        const currentAppProvider = shouldReapplyCurrent
+          ? providerFromTokenForApp(tokens, appId)
+          : null;
+        const reapplySignature = `${appId}:${currentProviderId}:${signature}`;
+        if (
+          currentAppProvider &&
+          reappliedCurrentSignatureRef.current !== reapplySignature
+        ) {
+          reappliedCurrentSignatureRef.current = reapplySignature;
+          console.info("[BistroAuth] reapplying current managed provider", {
+            appId,
+            providerId: currentAppProvider.id,
+          });
+          await providersApi.add(currentAppProvider, appId as AppId, false);
+          await providersApi.switch(currentAppProvider.id, appId as AppId);
+        }
         if (cancelled) return;
         setProviderSyncError(null);
         await Promise.all([
@@ -424,6 +458,8 @@ export function BistroCodePlatformPanel({
     };
   }, [
     isAuthenticated,
+    appId,
+    currentProviderId,
     linkedAccount?.desktopTokens,
     queryClient,
     tokenConfigsQuery.data,
@@ -494,12 +530,16 @@ export function BistroCodePlatformPanel({
     const params = new URLSearchParams({
       state: nextState,
       ts: String(Date.now()),
-      force_login: "1",
+      return_to: "/console",
+    });
+    console.info("[BistroAuth] opening desktop authorize URL", {
+      hasState: Boolean(nextState),
     });
     return openBistroCode(`${DESKTOP_AUTHORIZE_PATH}?${params.toString()}`);
   };
 
   const refreshAccount = () => {
+    console.info("[BistroAuth] refresh account requested");
     void accountQuery.refetch();
     void tokenConfigsQuery.refetch();
     void queryClient.invalidateQueries({ queryKey: ["usage"] });
@@ -649,7 +689,14 @@ export function BistroCodePlatformPanel({
             充值
           </Button>
           {isConnected && (
-            <Button size="sm" variant="ghost" onClick={clearAccount}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                console.info("[BistroAuth] disconnect requested from panel");
+                clearAccount();
+              }}
+            >
               <LogOut className="h-4 w-4" />
               断开
             </Button>

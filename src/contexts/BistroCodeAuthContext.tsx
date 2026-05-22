@@ -176,6 +176,7 @@ export function BistroCodeAuthProvider({
   }, []);
 
   const clearAccount = useCallback(() => {
+    console.info("[BistroAuth] clearing account and auth cache");
     syncAccount(null);
     setAuthState(createAuthState());
     setAuthError(null);

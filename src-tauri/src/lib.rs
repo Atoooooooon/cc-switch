@@ -121,7 +121,7 @@ fn handle_deeplink_url(
         redact_url_for_log(url_str)
     );
 
-    if url_str.starts_with("bistrocode://auth") {
+    if url_str.starts_with("bistrocode://auth") || url_str.starts_with("ccswitch://auth") {
         if !mark_seen_bistrocode_auth_link(url_str) {
             log::debug!("⊘ Duplicate BistroCode auth deep link ignored from {source}");
             return true;
