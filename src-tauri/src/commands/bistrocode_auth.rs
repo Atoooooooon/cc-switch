@@ -97,12 +97,64 @@ pub struct BistroCodeDesktopTokensResponse {
     pub data: Option<BistroCodeDesktopTokensData>,
 }
 
+#[derive(Debug, Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BistroCodeAnnouncement {
+    pub enabled: bool,
+    pub severity: String,
+    pub title: String,
+    pub message: String,
+    pub link_text: String,
+    pub link_url: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BistroCodeAnnouncementResponse {
+    pub success: bool,
+    pub message: Option<String>,
+    pub data: Option<BistroCodeAnnouncement>,
+}
+
 fn bistrocode_authorization_header(token: &str) -> String {
     if token.to_lowercase().starts_with("bearer ") {
         token.to_string()
     } else {
         format!("Bearer {token}")
     }
+}
+
+#[tauri::command]
+pub async fn get_bistrocode_announcement() -> Result<Option<BistroCodeAnnouncement>, String> {
+    let client = crate::proxy::http_client::get();
+    let response = client
+        .get(format!(
+            "{BISTROCODE_AUTH_BASE_URL}/api/desktop/announcement"
+        ))
+        .timeout(Duration::from_secs(10))
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("查询 BistroCode 公告失败: {e}"))?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("查询 BistroCode 公告失败 (HTTP {status}): {body}"));
+    }
+
+    let result = serde_json::from_str::<BistroCodeAnnouncementResponse>(&body)
+        .map_err(|e| format!("解析 BistroCode 公告失败: {e}"))?;
+    if !result.success {
+        return Err(result
+            .message
+            .unwrap_or_else(|| "BistroCode 公告返回失败".to_string()));
+    }
+
+    Ok(result
+        .data
+        .filter(|item| item.enabled && !item.message.trim().is_empty()))
 }
 
 #[tauri::command]

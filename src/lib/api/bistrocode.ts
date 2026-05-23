@@ -68,6 +68,16 @@ export interface BistroCodeAuthExchangeResponse {
   data?: BistroCodeAuthUser;
 }
 
+export interface BistroCodeAnnouncement {
+  enabled: boolean;
+  severity: "info" | "success" | "warning" | "error";
+  title?: string;
+  message: string;
+  linkText?: string;
+  linkUrl?: string;
+  updatedAt?: string;
+}
+
 export const BISTROCODE_BASE_URL = "https://bistrocode.online";
 
 export const bistrocodeApi = {
@@ -83,6 +93,10 @@ export const bistrocodeApi = {
 
   async getPricing(): Promise<BistroCodePricingResponse> {
     return await invoke("get_bistrocode_pricing");
+  },
+
+  async getAnnouncement(): Promise<BistroCodeAnnouncement | null> {
+    return await invoke("get_bistrocode_announcement");
   },
 
   async ensureDefaultTokens(

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   AlertTriangle,
   BarChart3,
+  CheckCircle2,
   CreditCard,
   Edit,
   ExternalLink,
+  Info,
   Loader2,
   LogOut,
   Play,
@@ -27,7 +30,10 @@ import {
 import { cn } from "@/lib/utils";
 import { fmtInt, fmtUsd } from "@/components/usage/format";
 import { useBistroCodeAuth } from "@/contexts/BistroCodeAuthContext";
-import type { BistroCodeDesktopTokenConfig } from "@/lib/api/bistrocode";
+import type {
+  BistroCodeAnnouncement,
+  BistroCodeDesktopTokenConfig,
+} from "@/lib/api/bistrocode";
 import type { AppId } from "@/lib/api/types";
 import type {
   Provider,
@@ -355,6 +361,14 @@ export function BistroCodePlatformPanel({
     retry: false,
   });
 
+  const announcementQuery = useQuery({
+    queryKey: ["bistrocode", "announcement"],
+    queryFn: () => bistrocodeApi.getAnnouncement(),
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+    retry: false,
+  });
+
   useEffect(() => {
     const data = accountQuery.data;
     if (!data?.loggedIn || !data.account || !accessToken.trim()) return;
@@ -555,6 +569,10 @@ export function BistroCodePlatformPanel({
         isManagedCurrent ? "border-emerald-500/50" : "border-border/70",
       )}
     >
+      {announcementQuery.data && (
+        <BistroAnnouncementBanner announcement={announcementQuery.data} />
+      )}
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <ProviderIcon icon="bistrocode" name="BistroCode" size={40} />
@@ -764,6 +782,84 @@ export function BistroCodePlatformPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function announcementStyle(severity: BistroCodeAnnouncement["severity"]) {
+  switch (severity) {
+    case "success":
+      return {
+        className:
+          "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
+        icon: CheckCircle2,
+      };
+    case "warning":
+      return {
+        className:
+          "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+        icon: AlertTriangle,
+      };
+    case "error":
+      return {
+        className:
+          "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200",
+        icon: AlertCircle,
+      };
+    default:
+      return {
+        className:
+          "border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200",
+        icon: Info,
+      };
+  }
+}
+
+function BistroAnnouncementBanner({
+  announcement,
+}: {
+  announcement: BistroCodeAnnouncement;
+}) {
+  const style = announcementStyle(announcement.severity);
+  const Icon = style.icon;
+  return (
+    <div
+      className={cn(
+        "mb-4 rounded-md border px-3 py-2 text-xs",
+        style.className,
+      )}
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 gap-2">
+          <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            {announcement.title && (
+              <div className="font-medium text-current">
+                {announcement.title}
+              </div>
+            )}
+            <div className={cn(announcement.title && "mt-0.5")}>
+              {announcement.message}
+            </div>
+            {announcement.updatedAt && (
+              <div className="mt-1 opacity-70">
+                更新于 {announcement.updatedAt}
+              </div>
+            )}
+          </div>
+        </div>
+        {announcement.linkUrl && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 shrink-0 bg-background/60 px-2 text-xs"
+            onClick={() => void openBistroCode(announcement.linkUrl || "/")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            {announcement.linkText || "查看详情"}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

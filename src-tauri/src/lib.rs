@@ -1200,6 +1200,7 @@ pub fn run() {
             commands::get_balance,
             commands::get_bistrocode_account,
             commands::get_bistrocode_pricing,
+            commands::get_bistrocode_announcement,
             // New MCP via config.json (SSOT)
             commands::get_mcp_config,
             commands::upsert_mcp_server_in_config,
